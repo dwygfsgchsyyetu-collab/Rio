@@ -1,17 +1,22 @@
-from god_brain.agents.base_agent import GodBaseAgent
+import base64
 
-class AssetGeneratorAgent(GodBaseAgent):
-    def __init__(self):
-        super().__init__(role_name="3D Asset Generator", service_type="brain")
+# Simple asset generator that writes a 1x1 transparent PNG if missing
+PLACEHOLDER_PNG_BASE64 = b'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII='
 
-    def perform_role(self, asset_description: str, style: str = "realistic") -> dict:
-        """कमांड को पढ़कर 3D मॉडल (Vertices, Faces, Materials) का डेटा जनरेट करना"""
-        directive = (
-            f"Generate a detailed 3D model architecture for: '{asset_description}'. "
-            f"Visual Style: {style}. "
-            f"Provide the exact geometric parameters (vertices, textures, materials) "
-            f"compatible with Three.js or Unreal Engine object structures. "
-            f"Ensure the polygon count is optimized for cloud streaming."
-        )
-        return self.think_and_execute(task_directive=directive)
-      
+
+def ensure_placeholder_assets(uploaded_assets_store: dict):
+    # If no image asset exists, insert a placeholder image
+    has_image = any(v.get('name','').lower().endswith(('.png','.jpg','.jpeg')) for v in uploaded_assets_store.values())
+    if not has_image:
+        aid = 'asset_placeholder_img'
+        uploaded_assets_store[aid] = {
+            'name': 'placeholder.png',
+            'size': len(PLACEHOLDER_PNG_BASE64),
+            'data': base64.b64decode(PLACEHOLDER_PNG_BASE64),
+            'path': 'placeholder.png'
+        }
+    # If no model, do nothing — builder will create default cube in HTML
+    has_audio = any(v.get('name','').lower().endswith(('.mp3','.wav','.ogg')) for v in uploaded_assets_store.values())
+    if not has_audio:
+        # no-op; audio optional
+        pass

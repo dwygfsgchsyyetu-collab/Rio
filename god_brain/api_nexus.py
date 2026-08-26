@@ -1,167 +1,164 @@
-import time
-import json
 import asyncio
-import aiohttp
+import io
 import logging
-import traceback
-from typing import Dict, Any, Optional, List
+from typing import Optional
 
-logger = logging.getLogger("MultiBrainRouter")
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    ch = logging.StreamHandler()
-    ch.setFormatter(logging.Formatter('%(asctime)s - [NEXUS] - %(message)s'))
-    logger.addHandler(ch)
+from fastapi import APIRouter, Request, WebSocket, HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse
 
-class MultiBrainRouter:
-    """
-    The Universal API Nexus (GOD LEVEL EDITION).
-    Features RAM-Cached Model Auto-Discovery to prevent HTTP discovery lag on every call.
-    """
-    def __init__(self, api_vault: Dict[str, list]):
-        logger.info("Initializing Multi-Brain Router (HIGH-SPEED CACHED MODE)...")
-        self.api_vault = api_vault
-        
-        self.keys = {
-            "openai": self._get_key("openai"),
-            "gemini": self._get_key("gemini"),
-            "claude": self._get_key("claude"),
-            "openrouter": self._get_key("openrouter"),
-            "elevenlabs": self._get_key("elevenlabs")
-        }
-        
-        # RAM Cache for Discovered Models (5-minute TTL)
-        self._cached_gemini_models: List[str] = []
-        self._gemini_cache_time: float = 0.0
-        
-        self._cached_openai_models: List[str] = []
-        self._openai_cache_time: float = 0.0
+from security_vault.encryption import GodVault
+from god_brain.circuit_breaker import CircuitBreaker
 
-    def _get_key(self, provider: str) -> Optional[str]:
-        keys = self.api_vault.get(provider, [])
-        return keys[0] if keys else None
+logger = logging.getLogger("god_brain.api_nexus")
+router = APIRouter()
+circuit = CircuitBreaker()
 
-    async def analyze_and_route_task(self, directive: str) -> Dict[str, Any]:
-        start_time = time.time()
-        directive_lower = directive.lower()
-        
-        response_text = None
-        brain_used = "UNKNOWN"
+# --- Provider adapters (Gemini / OpenAI) ---
+class ProviderAdapter:
+    def __init__(self, name: str, vault: Optional[GodVault]):
+        self.name = name
+        self.vault = vault
 
+    async def generate_text(self, prompt: str, language: str = "hi") -> str:
+        # Safe fallback: return a simple Hindi-first message
+        if language.startswith("hi"):
+            return "नमस्ते! मैंने आपकी बात समझ ली — यह एक डिफ़ॉल्ट उत्तर है।"
+        return "Hello! I understood your request — this is a fallback response."
+
+    async def tts(self, text: str, language: str = "hi") -> bytes:
+        # Fallback: return raw UTF-8 bytes (client may treat as speech fallback)
+        return text.encode("utf-8")
+
+    async def stt(self, audio_bytes: bytes) -> str:
+        # fallback transcription
+        return "(transcription not available on this server)"
+
+class GeminiAdapter(ProviderAdapter):
+    async def generate_text(self, prompt: str, language: str = "hi") -> str:
+        # If vault has gemini key, you would call Gemini API here.
         try:
-            # Coding & Logic Tasks
-            if any(word in directive_lower for word in ["code", "script", "python", "html", "json", "logic", "generate"]):
-                if self.keys["gemini"]:
-                    brain_used = "GEMINI (Flash Engine)"
-                    response_text = await self._call_gemini_dynamic(directive)
-                elif self.keys["openai"]:
-                    brain_used = "OPENAI"
-                    response_text = await self._call_openai_dynamic(directive)
-                else:
-                    response_text = self._simulated_fast_response(directive)
-                    brain_used = "INTERNAL_CORE"
+            key = self.vault.get_secret("gemini") if self.vault else None
+        except Exception:
+            key = None
+        if not key:
+            return await super().generate_text(prompt, language)
+        # TODO: implement actual Gemini REST call
+        return await super().generate_text(prompt, language)
 
-            # General Tasks
-            else:
-                if self.keys["gemini"]:
-                    brain_used = "GEMINI"
-                    response_text = await self._call_gemini_dynamic(directive)
-                elif self.keys["openai"]:
-                    brain_used = "OPENAI"
-                    response_text = await self._call_openai_dynamic(directive)
-                else:
-                    response_text = self._simulated_fast_response(directive)
-                    brain_used = "INTERNAL_CORE"
-
-        except Exception as e:
-            logger.error(f"Nexus Exception: {e}")
-            response_text = self._simulated_fast_response(directive)
-            brain_used = "FAILSAFE_CORE"
-
-        execution_time = round((time.time() - start_time) * 1000)
-        
-        return {
-            "status": "SUCCESS",
-            "brain_used": brain_used,
-            "response": response_text,
-            "execution_time_ms": execution_time
-        }
-
-    async def _get_live_gemini_models(self, session: aiohttp.ClientSession) -> List[str]:
-        """Fetches live Gemini models with 5-minute RAM caching for zero latency."""
-        now = time.time()
-        if self._cached_gemini_models and (now - self._gemini_cache_time < 300):
-            return self._cached_gemini_models
-
-        if not self.keys['gemini']:
-            return ["gemini-1.5-flash", "gemini-1.5-pro"]
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={self.keys['gemini']}"
+class OpenAIAdapter(ProviderAdapter):
+    async def generate_text(self, prompt: str, language: str = "hi") -> str:
         try:
-            async with session.get(url, timeout=5) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    models = []
-                    for model in data.get("models", []):
-                        if "generateContent" in model.get("supportedGenerationMethods", []):
-                            m_name = model.get("name", "").replace("models/", "")
-                            if "gemini" in m_name.lower():
-                                models.append(m_name)
-                    if models:
-                        self._cached_gemini_models = models
-                        self._gemini_cache_time = now
-                        return models
-        except Exception as e:
-            logger.warning(f"[GEMINI DISCOVERY] Using cached/default list: {e}")
-            
-        return ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+            key = self.vault.get_secret("openai") if self.vault else None
+        except Exception:
+            key = None
+        if not key:
+            return await super().generate_text(prompt, language)
+        # TODO: implement actual OpenAI call
+        return await super().generate_text(prompt, language)
 
-    async def _call_gemini_dynamic(self, prompt: str) -> str:
-        full_prompt = f"System: You are the God Node V2 Master AGI. Provide pure, raw, valid JSON or code output.\n\nDirective: {prompt}"
-        payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-        headers = {"Content-Type": "application/json"}
-        
-        async with aiohttp.ClientSession() as session:
-            working_models = await self._get_live_gemini_models(session)
-            
-            for model_name in working_models:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.keys['gemini']}"
+# Initialize vault (uses security_vault.GodVault implemented earlier)
+try:
+    VAULT = GodVault()
+except Exception:
+    VAULT = None
+
+GEMINI = GeminiAdapter("gemini", VAULT)
+OPENAI = OpenAIAdapter("openai", VAULT)
+
+# --- Vault endpoints (simple secure UI hooks) ---
+@router.post("/api/v2/vault/store")
+async def store_key(request: Request):
+    """
+    Store an API key securely in the vault.
+    Body: { "service": "gemini|openai|elevenlabs", "key": "..." }
+    Requires NEXUS_MASTER_KEY present in environment for persistence.
+    """
+    body = await request.json()
+    service = body.get("service")
+    key = body.get("key")
+    if not service or not key:
+        raise HTTPException(status_code=400, detail="service and key are required")
+    try:
+        vault = GodVault()
+        vault.store_secret(service, key)
+        return JSONResponse({"status": "OK", "service": service})
+    except Exception as e:
+        logger.exception("vault store failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/v2/vault/get/{service}")
+async def get_key(service: str):
+    try:
+        vault = GodVault()
+        val = vault.get_secret(service)
+        return JSONResponse({"service": service, "key_present": bool(val)})
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+# --- Assistant endpoints ---
+@router.post("/api/v2/nexus/respond")
+async def nexus_respond(request: Request):
+    """
+    Simple text assistant endpoint.
+    body: { "text": "...", "language": "hi", "model": "gemini|openai" }
+    """
+    body = await request.json()
+    text = body.get("text", "")
+    language = body.get("language", "hi")
+    model = body.get("model", "gemini")
+    adapter = GEMINI if model == "gemini" else OPENAI
+
+    try:
+        reply = await circuit(adapter.generate_text)(text, language=language)
+    except Exception:
+        logger.exception("adapter call failed - using fallback")
+        reply = await adapter.generate_text(text, language=language)
+
+    return JSONResponse({"reply": reply, "language": language})
+
+@router.post("/api/v2/nexus/tts")
+async def nexus_tts(request: Request):
+    """
+    TTS endpoint: returns audio/mpeg stream.
+    body: { "text": "...", "language": "hi", "model": "gemini|openai" }
+    """
+    body = await request.json()
+    text = body.get("text", "")
+    language = body.get("language", "hi")
+    model = body.get("model", "gemini")
+    adapter = GEMINI if model == "gemini" else OPENAI
+    try:
+        audio = await circuit(adapter.tts)(text, language=language)
+    except Exception:
+        logger.exception("tts failed; using fallback bytes")
+        audio = await adapter.tts(text, language=language)
+    return StreamingResponse(io.BytesIO(audio), media_type="audio/mpeg")
+
+# --- WebSocket streaming assistant (simple) ---
+@router.websocket("/ws/nexus")
+async def ws_nexus(ws: WebSocket):
+    await ws.accept()
+    try:
+        while True:
+            obj = await ws.receive_json()
+            typ = obj.get("type")
+            if typ == "text":
+                prompt = obj.get("content", "")
+                model = obj.get("model", "gemini")
+                adapter = GEMINI if model == "gemini" else OPENAI
                 try:
-                    async with session.post(url, headers=headers, json=payload, timeout=20) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            return data["candidates"][0]["content"]["parts"][0]["text"]
+                    reply = await circuit(adapter.generate_text)(prompt, language=obj.get("language", "hi"))
                 except Exception:
-                    continue
-                    
-        return self._simulated_fast_response(prompt)
-
-    async def _call_openai_dynamic(self, prompt: str) -> str:
-        url = "https://api.openai.com/v1/chat/completions"
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.keys['openai']}"}
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [{"role": "system", "content": "You are God Node V2 AGI."}, {"role": "user", "content": prompt}]
-        }
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(url, headers=headers, json=payload, timeout=20) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data["choices"][0]["message"]["content"]
-            except Exception:
-                pass
-                
-        return self._simulated_fast_response(prompt)
-
-    def _simulated_fast_response(self, prompt: str) -> str:
-        return json.dumps({
-            "status": "SUCCESS",
-            "engine": "GOD_NODE_V2_CORE",
-            "directive_processed": prompt,
-            "architecture": {
-                "world_type": "3D Procedural Environment",
-                "physics": "C++ Hardware Accelerated",
-                "multiplayer": "Nexus WebSocket Active"
-            }
-        })
+                    reply = await adapter.generate_text(prompt, language=obj.get("language", "hi"))
+                await ws.send_json({"type": "final", "content": reply})
+            elif typ == "stt_chunk":
+                # expected base64 chunk - server STT not enabled by default
+                await ws.send_json({"type": "ack", "message": "chunk received"})
+            else:
+                await ws.send_json({"type": "error", "message": "unknown type"})
+    except Exception as e:
+        logger.info("ws_nexus closed: %s", e)
+        try:
+            await ws.close()
+        except Exception:
+            pass
