@@ -1,182 +1,456 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>God Node V2 - Control Panel</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>God Node V2 — Control Panel</title>
+  <!-- Tailwind Play CDN for quick theming -->
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto; background: linear-gradient(180deg,#f8fafc,#e6eef8); color:#0b1220; }
-    .sidebar { position:fixed; left:0; top:0; bottom:0; width:260px; padding:20px; background: rgba(255,255,255,0.6); backdrop-filter: blur(6px); border-right:1px solid rgba(15,23,42,0.04);} 
-    .main { margin-left:280px; padding:20px; }
-    .card { border-radius:12px; }
-    #viewportIframe{ width:100%; height:600px; border-radius:12px; border:1px solid rgba(15,23,42,0.06); }
-    .vault-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
-    .vault-row input{ flex:1; }
+    /* Frosted glass tokens */
+    .glass { background: rgba(255,255,255,0.6); backdrop-filter: blur(16px) saturate(130%); -webkit-backdrop-filter: blur(16px) saturate(130%); border: 1px solid rgba(255,255,255,0.6); }
+    .glass-dark { background: rgba(17,24,39,0.56); backdrop-filter: blur(12px) saturate(110%); -webkit-backdrop-filter: blur(12px) saturate(110%); border:1px solid rgba(255,255,255,0.04); }
+    .soft-shadow { box-shadow: 0 6px 18px rgba(11,15,25,0.06); }
+    .glass-card { border-radius: 12px; padding: 14px; }
+    .mic-wave { width: 36px; height: 36px; border-radius: 999px; display:flex; align-items:center; justify-content:center; }
+    /* simple waveform animation */
+    .wave { width:4px; height:10px; background:linear-gradient(#2563EB,#7C3AED); margin:0 1px; animation:float 800ms ease-in-out infinite; }
+    .wave:nth-child(2){ animation-delay:100ms } .wave:nth-child(3){ animation-delay:200ms } .wave:nth-child(4){ animation-delay:300ms } .wave:nth-child(5){ animation-delay:400ms }
+    @keyframes float{ 0%{transform:scaleY(0.4)}50%{transform:scaleY(1.0)}100%{transform:scaleY(0.4)} }
+    /* Responsive safety */
+    .no-squish { min-width:0; }
+    iframe#viewportIframe { width:100%; height:520px; border-radius:12px; border:1px solid rgba(11,15,25,0.06); }
+    /* Modal backdrop */
+    .modal-backdrop{ position:fixed; left:0;right:0;top:0;bottom:0; display:flex; align-items:center; justify-content:center; z-index:60 }
   </style>
 </head>
-<body>
-  <div class="sidebar">
-    <h4>⚙️ GOD NODE V2</h4>
-    <hr />
-    <div>
-      <button class="btn btn-sm btn-primary" id="btn-new-game">New Game</button>
-    </div>
-    <hr />
-    <div>
-      <h6>API Vault</h6>
-      <div id="vault-categories"></div>
-      <button class="btn btn-outline-secondary btn-sm" id="btn-add-vault">+ Add Key</button>
-      <hr />
-      <h6>My Games</h6>
-      <div id="myGamesList"></div>
-    </div>
+<body class="antialiased text-slate-800 bg-gradient-to-br from-white via-slate-50 to-slate-100 min-h-screen">
+
+  <!-- Application container -->
+  <div id="app" class="min-h-screen flex flex-col md:flex-row">
+
+    <!-- Sidebar / Drawer -->
+    <aside id="sidebar" class="glass soft-shadow glass-card w-full md:w-72 md:h-screen p-4 md:fixed md:left-6 md:top-6 md:bottom-6 z-40 transition-transform transform md:translate-x-0 -translate-x-full md:relative">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+          <button id="hamburger" class="md:hidden p-2 rounded-md" aria-label="toggle menu">☰</button>
+          <div class="flex items-center gap-2">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white font-medium">GN</div>
+            <div class="text-sm leading-4">
+              <div class="font-semibold">God Node V2</div>
+              <div class="text-xs text-slate-500">Game Engine & IDE</div>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <div id="liveStatus" class="flex items-center gap-2 text-sm">
+            <span id="statusDot" class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
+            <span id="statusText" class="text-xs text-slate-600">Online</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <nav class="space-y-3 text-sm">
+        <div class="flex items-center justify-between">
+          <div class="font-semibold">Active Simulation</div>
+          <button class="action-dots">⋮</button>
+        </div>
+        <div class="flex items-center justify-between">
+          <div class="font-semibold">My Games & Projects</div>
+          <div class="flex items-center gap-2">
+            <button id="refreshGames" class="px-2 py-1 rounded-md text-xs bg-indigo-50 text-indigo-700">Refresh</button>
+            <button class="action-dots">⋮</button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div class="font-semibold">5TB Cloud Asset Vault</div>
+          <button id="openVault" class="px-2 py-1 rounded-md text-xs bg-amber-50 text-amber-700">Vault</button>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div class="font-semibold">Live Hot-Reloader / Vibe Coding</div>
+          <button class="action-dots">⋮</button>
+        </div>
+
+        <div class="mt-4 space-y-2">
+          <div class="text-xs text-slate-500">Universal Build Exporters</div>
+          <div class="flex gap-2">
+            <button id="exportWeb" class="flex-1 px-3 py-2 rounded-md bg-white border text-sm">Web (.zip)</button>
+            <button id="exportMobile" class="flex-1 px-3 py-2 rounded-md bg-white border text-sm">Mobile (.apk)</button>
+            <button id="exportPC" class="flex-1 px-3 py-2 rounded-md bg-white border text-sm">PC (.exe)</button>
+          </div>
+        </div>
+      </nav>
+
+      <div class="mt-6 text-xs text-slate-500">Version 10.0 · Enterprise</div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="flex-1 p-4 md:ml-80">
+
+      <!-- Header bar -->
+      <header class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-4">
+          <button id="drawerToggle" class="hidden md:inline-flex p-2 rounded-md" aria-label="toggle drawer">☰</button>
+          <h1 class="text-lg font-semibold">Control Panel</h1>
+          <div class="text-xs text-slate-500">Frosted Glass UI</div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 bg-white glass-card rounded-md px-2 py-1"> 
+            <label for="themeSelect" class="text-xs text-slate-600">Theme</label>
+            <select id="themeSelect" class="ml-2 text-sm bg-transparent outline-none">
+              <option value="theme-default">Clean White</option>
+              <option value="theme-frost">Frosted Glass</option>
+              <option value="theme-dark">Deep Slate</option>
+              <option value="theme-monokai">Monokai</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-2 glass-card rounded-md px-3 py-1">
+            <span class="text-xs text-slate-500">Telemetry</span>
+            <span id="latencyBadge" class="text-sm font-medium bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">--ms</span>
+          </div>
+
+          <button id="openVaultBtn" class="glass-card rounded-md px-3 py-2">⚙️ API & Cloud Vault</button>
+        </div>
+      </header>
+
+      <!-- Two column layout -->
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        <!-- Left column: Generator -->
+        <div class="col-span-2 glass soft-shadow glass-card">
+          <h2 class="text-md font-semibold mb-2">Generate Game</h2>
+          <div class="flex flex-col md:flex-row gap-3">
+            <div class="flex-1 min-w-0">
+              <textarea id="gamePrompt" class="w-full min-h-[160px] p-3 rounded-md border text-sm" placeholder="Describe your game (Hindi preferred). Use natural language or ask for Three.js scene code."></textarea>
+              <div class="flex items-center gap-3 mt-3">
+                <div class="flex items-center gap-2">
+                  <button id="btnMic" class="mic-wave bg-white soft-shadow p-2 rounded-full" title="Voice input">
+                    <div id="micWaveInner" class="flex items-end">
+                      <div class="wave" style="height:10px"></div>
+                      <div class="wave" style="height:14px"></div>
+                      <div class="wave" style="height:8px"></div>
+                      <div class="wave" style="height:12px"></div>
+                      <div class="wave" style="height:9px"></div>
+                    </div>
+                  </button>
+                  <button id="btnGenerate" class="px-4 py-2 rounded-md bg-indigo-600 text-white">Generate</button>
+                </div>
+
+                <div class="flex items-center gap-2 ml-auto">
+                  <label class="text-xs text-slate-500">Model</label>
+                  <select id="modelSelectSmall" class="bg-transparent text-sm">
+                    <option value="gemini">Gemini</option>
+                  </select>
+                </div>
+              </div>
+
+              <div id="generationProgress" class="mt-3" style="display:none">
+                <div class="w-full bg-gray-100 rounded h-2 overflow-hidden"><div id="progressBar" class="bg-indigo-600 h-2 w-0"></div></div>
+                <div class="text-xs text-slate-500 mt-2" id="progressText">Queued</div>
+              </div>
+            </div>
+
+            <div class="w-full md:w-80 space-y-3">
+              <div class="glass-card soft-shadow">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm font-semibold">Live Viewport</div>
+                    <div class="text-xs text-slate-500">Sandboxed preview</div>
+                  </div>
+                  <div>
+                    <button id="playPreviewBtn" class="px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-sm">Play</button>
+                  </div>
+                </div>
+                <div class="mt-3">
+                  <iframe id="viewportIframe" sandbox="allow-scripts allow-same-origin"></iframe>
+                </div>
+              </div>
+
+              <div class="glass-card soft-shadow">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="text-sm font-semibold">My Games</div>
+                  <button id="openGamesBtn" class="text-xs text-slate-500">Manage</button>
+                </div>
+                <div id="myGamesList" class="space-y-2 max-h-44 overflow-auto"></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Right column: Telemetry & Logs -->
+        <aside class="glass soft-shadow glass-card">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-semibold">Real-time Telemetry</div>
+            <div class="text-xs text-slate-500">Logs · SSE</div>
+          </div>
+
+          <div class="mb-2 flex gap-2">
+            <button id="btnCopyLogs" class="px-2 py-1 rounded bg-white border text-xs">Copy</button>
+            <button id="btnClearLogs" class="px-2 py-1 rounded bg-white border text-xs">Clear</button>
+            <button id="btnDownloadLogs" class="px-2 py-1 rounded bg-white border text-xs">Download</button>
+          </div>
+
+          <div id="logContainer" class="text-xs bg-white p-2 rounded max-h-80 overflow-auto"></div>
+        </aside>
+
+      </section>
+
+    </main>
   </div>
 
-  <div class="main">
-    <div class="container-fluid">
-      <div class="row">
-        <div class="col-md-6">
-          <div class="card p-3">
-            <h5>Generate Game</h5>
-            <textarea id="gamePrompt" class="form-control" rows="5" placeholder="Describe the game (Hindi preferred)"></textarea>
-            <div class="mt-2 d-flex gap-2">
-              <button class="btn btn-success" id="btn-generate">Generate</button>
-              <button class="btn btn-outline-secondary" id="btn-mic">🎙️ Mic</button>
-              <select id="modelSelect" class="form-select w-auto">
-                <option value="gemini">Gemini</option>
-              </select>
-            </div>
-            <div id="generationProgress" class="mt-2" style="display:none">
-              <div class="progress"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
-              <div id="progressText" class="small mt-1"></div>
-            </div>
-          </div>
-
-          <div class="card p-3 mt-3">
-            <h5>Vault Sync</h5>
-            <button class="btn btn-primary" id="btn-sync-vault">Sync To Server</button>
-          </div>
-
+  <!-- Vault Modal (hidden by default) -->
+  <div id="vaultModal" class="modal-backdrop" style="display:none">
+    <div class="glass-card w-[92%] md:w-3/4 max-w-4xl soft-shadow">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-semibold">API & Cloud Vault</h3>
+        <div class="flex items-center gap-2">
+          <button id="btnVaultSave" class="px-3 py-1 rounded bg-indigo-600 text-white">Save</button>
+          <button id="btnVaultClose" class="px-3 py-1 rounded bg-white border">Close</button>
         </div>
-        <div class="col-md-6">
-          <div class="card p-3">
-            <h5>Live Viewport</h5>
-            <iframe id="viewportIframe" sandbox="allow-scripts allow-same-origin"></iframe>
-            <div class="mt-2 d-flex gap-2">
-              <button class="btn btn-outline-primary" id="btn-download-zip">Download ZIP</button>
-              <button class="btn btn-outline-secondary" id="btn-export-capacitor">Export (Capacitor)</button>
-              <button class="btn btn-outline-secondary" id="btn-export-tauri">Export (Tauri)</button>
-            </div>
-          </div>
+      </div>
 
-          <div class="card p-3 mt-3">
-            <h5>Logs</h5>
-            <div id="logContainer" style="height:180px;overflow:auto;background:#fff;padding:10px;border-radius:8px;border:1px solid rgba(11,17,34,0.04)"></div>
-          </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <div class="font-semibold mb-2">CORE LLM ENGINE</div>
+          <div id="vault-core" class="space-y-2"></div>
+          <button data-target="core" class="add-entry px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-xs">[ ADD + ]</button>
         </div>
+        <div>
+          <div class="font-semibold mb-2">3D RENDERING API</div>
+          <div id="vault-render" class="space-y-2"></div>
+          <button data-target="render" class="add-entry px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-xs">[ ADD + ]</button>
+        </div>
+        <div>
+          <div class="font-semibold mb-2">AUDIO & SFX API</div>
+          <div id="vault-audio" class="space-y-2"></div>
+          <button data-target="audio" class="add-entry px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-xs">[ ADD + ]</button>
+        </div>
+        <div>
+          <div class="font-semibold mb-2">CLOUD STORAGE (5TB)</div>
+          <div id="vault-cloud" class="space-y-2"></div>
+          <button data-target="cloud" class="add-entry px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-xs">[ ADD + ]</button>
+        </div>
+        <div class="md:col-span-2">
+          <div class="font-semibold mb-2">AD PLATFORMS & SDK</div>
+          <div id="vault-ads" class="space-y-2"></div>
+          <button data-target="ads" class="add-entry px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-xs">[ ADD + ]</button>
+        </div>
+      </div>
+
+      <div class="mt-4">
+        <label class="text-xs text-slate-500">Master Security PIN</label>
+        <input id="masterPin" type="password" class="w-full rounded-md border p-2 mt-1" placeholder="Enter master PIN" />
       </div>
     </div>
   </div>
 
-<script>
-// Vault categories default
-const defaultCategories = ["CORE LLM ENGINE","3D RENDERING API","AUDIO & SFX API","CLOUD STORAGE (5TB)","AD PLATFORMS & SDK"];
-let vault = JSON.parse(localStorage.getItem('godnode_vault')||'{}');
+  <script>
+    // --- Helpers & App State ---
+    const storageKey = 'GOD_NODE_VAULT_KEYS';
+    let vaultState = JSON.parse(localStorage.getItem(storageKey) || '{}');
 
-function renderVault(){
-  const container = document.getElementById('vault-categories'); container.innerHTML='';
-  defaultCategories.forEach(cat=>{
-    const el = document.createElement('div'); el.innerHTML = `<div class='vault-row'><strong style='width:160px'>${cat}</strong><input placeholder='Key or Token' data-cat='${cat}' class='form-control'/><button class='btn btn-sm btn-danger'>X</button></div>`;
-    container.appendChild(el);
-    const input = el.querySelector('input');
-    input.value = vault[cat]||'';
-    input.addEventListener('input', (e)=>{ vault[cat]=e.target.value; localStorage.setItem('godnode_vault', JSON.stringify(vault)); });
-    el.querySelector('button').addEventListener('click', ()=>{ delete vault[cat]; localStorage.setItem('godnode_vault', JSON.stringify(vault)); renderVault(); });
-  });
-}
-
-renderVault();
-
-// Add custom key rows
-document.getElementById('btn-add-vault').addEventListener('click', ()=>{
-  const name = prompt('Key name (e.g., GEMINI_API_KEY)');
-  if(!name) return; vault[name] = ''; localStorage.setItem('godnode_vault', JSON.stringify(vault)); renderVault();
-});
-
-// Sync vault to server
-document.getElementById('btn-sync-vault').addEventListener('click', async ()=>{
-  try{
-    for(const k in vault){
-      const v = vault[k];
-      const serviceKey = (k.toLowerCase().includes('gemini')||k.toLowerCase().includes('google'))? 'gemini' : (k.toLowerCase().includes('openai')? 'openai' : k);
-      await fetch('/api/v2/vault/store',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service:serviceKey,key:v})});
+    // Fetch wrapper to inject Gemini Key and Master PIN headers
+    async function nexusFetch(url, opts = {}){
+      opts.headers = opts.headers || {};
+      // Determine active Gemini key from vaultState
+      const geminiKey = (vaultState.core && vaultState.core.find(e=>e.name && e.name.toLowerCase().includes('gemini'))||{}).key || '';
+      const pin = vaultState.masterPin || '';
+      if(geminiKey) opts.headers['X-Gemini-Key'] = geminiKey;
+      if(pin) opts.headers['X-Master-Pin'] = pin;
+      opts.credentials = 'same-origin';
+      return fetch(url, opts);
     }
-    alert('Vault synced to server');
-  }catch(e){alert('Sync failed '+e)}
-});
 
-// My Games list
-async function loadMyGames(){
-  const res = await fetch('/api/v1/games'); const data = await res.json();
-  const container = document.getElementById('myGamesList'); container.innerHTML='';
-  (data.games||[]).forEach(g=>{
-    const el = document.createElement('div'); el.innerHTML = `<div style='display:flex;justify-content:space-between;align-items:center'><div><strong>${g.game_id}</strong><div style='font-size:12px;color:#666'>${g.preview_url||''}</div></div><div><button class='btn btn-sm btn-primary' data-id='${g.game_id}'>Play</button></div></div>`;
-    container.appendChild(el);
-    el.querySelector('button').addEventListener('click', ()=>{ openPreview(g.game_id); });
-  })
-}
-async function openPreview(id){ const preview = `/exports/${id}/index.html`; const iframe = document.getElementById('viewportIframe'); fetch(preview).then(r=>r.text()).then(html=>{ iframe.srcdoc = html; }); }
+    // --- Theme system ---
+    const themes = { 'theme-default': applyDefault, 'theme-frost': applyFrost, 'theme-dark': applyDark, 'theme-monokai': applyMonokai };
+    const themeSelect = document.getElementById('themeSelect');
+    function applyDefault(){ document.documentElement.style.background = ''; document.body.className = 'antialiased text-slate-800'; }
+    function applyFrost(){ document.documentElement.style.background = 'linear-gradient(180deg,#f7fbff,#eef6f9)'; document.body.className = 'antialiased text-slate-800'; }
+    function applyDark(){ document.documentElement.style.background = 'linear-gradient(180deg,#0b1220,#071026)'; document.body.className = 'antialiased text-slate-100 bg-slate-900'; }
+    function applyMonokai(){ document.documentElement.style.background = 'linear-gradient(180deg,#2b2b2b,#141414)'; document.body.className = 'antialiased text-yellow-200 bg-[#1e1b19]'; }
+    // load persisted theme
+    (function(){ const t = localStorage.getItem('GOD_NODE_THEME') || 'theme-default'; themeSelect.value = t; themes[t] && themes[t](); })();
+    themeSelect.addEventListener('change', (e)=>{ const v=e.target.value; localStorage.setItem('GOD_NODE_THEME', v); themes[v] && themes[v](); });
 
-loadMyGames();
+    // --- Sidebar toggle ---
+    const sidebar = document.getElementById('sidebar');
+    document.getElementById('hamburger').addEventListener('click', ()=>{ sidebar.style.transform = sidebar.style.transform === 'translateX(0px)' ? 'translateX(-110%)' : 'translateX(0px)'; });
+    document.getElementById('drawerToggle').addEventListener('click', ()=>{ sidebar.classList.toggle('-translate-x-full'); });
 
-// Generate Game
-let lastTaskId = null;
-document.getElementById('btn-generate').addEventListener('click', async ()=>{
-  const prompt = document.getElementById('gamePrompt').value; if(!prompt) return alert('enter prompt');
-  const model = document.getElementById('modelSelect').value;
-  document.getElementById('generationProgress').style.display='block'; document.getElementById('progressBar').style.width='10%'; document.getElementById('progressText').innerText='Queued';
-  const res = await fetch('/api/v2/generate/game',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,game_type:'interactive'})});
-  const j = await res.json(); lastTaskId = j.task_id; pollTask(lastTaskId);
-});
+    // --- Vault modal logic ---
+    const vaultModal = document.getElementById('vaultModal');
+    document.getElementById('openVault').addEventListener('click', ()=> vaultModal.style.display = 'flex');
+    document.getElementById('openVaultBtn').addEventListener('click', ()=> vaultModal.style.display = 'flex');
+    document.getElementById('btnVaultClose').addEventListener('click', ()=> vaultModal.style.display = 'none');
 
-async function pollTask(taskId){
-  try{
-    const r = await fetch(`/api/v2/status/${taskId}`); const j = await r.json(); const p = j.progress||0; document.getElementById('progressBar').style.width = p+'%'; document.getElementById('progressText').innerText = j.status || '';
-    if(j.status === 'SUCCESS' && j.result && j.result.final_build){
-      const iframe = document.getElementById('viewportIframe'); iframe.srcdoc = j.result.final_build;
-      document.getElementById('generationProgress').style.display='none'; loadMyGames();
-    }else if(j.status==='FAILED'){ document.getElementById('generationProgress').style.display='none'; alert('Generation failed'); }
-    else setTimeout(()=>pollTask(taskId), 1200);
-  }catch(e){ console.error(e); setTimeout(()=>pollTask(taskId), 2000); }
-}
+    // dynamic add entries
+    document.querySelectorAll('.add-entry').forEach(btn=>btn.addEventListener('click', (e)=>{
+      const target = e.target.getAttribute('data-target'); addVaultRow(target, '', '');
+    }));
 
-// Mic using Web Speech API
-let recognition = null;
-if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
-  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new Rec(); recognition.lang = 'hi-IN'; recognition.interimResults = true; recognition.continuous = false;
-  recognition.onresult = (e)=>{ const text = Array.from(e.results).map(r=>r[0].transcript).join(''); document.getElementById('gamePrompt').value = text; }
-}
-document.getElementById('btn-mic').addEventListener('click', ()=>{ if(!recognition) return alert('SpeechRecognition not available'); recognition.start(); });
+    function addVaultRow(category, name='', key=''){
+      const container = document.getElementById('vault-'+category);
+      const row = document.createElement('div'); row.className = 'flex items-center gap-2';
+      row.innerHTML = `<input placeholder='Provider name' class='flex-1 p-2 rounded border' value='${escapeHtml(name)}' /> <input placeholder='API Key' type='password' class='flex-1 p-2 rounded border' value='${escapeHtml(key)}' /> <button class='px-2 py-1 rounded bg-red-50 text-red-700'>X</button>`;
+      container.appendChild(row);
+      row.querySelector('button').addEventListener('click', ()=>{ row.remove(); saveVaultToLocal(); });
+      row.querySelectorAll('input').forEach(inp=>inp.addEventListener('input', saveVaultToLocal));
+    }
 
-// Logs SSE
-function connectLogs(){
-  if(typeof(EventSource)!=='undefined'){
-    const es = new EventSource('/api/v2/logs');
-    es.onmessage = function(e){ const container=document.getElementById('logContainer'); container.innerHTML += '<div>'+e.data+'</div>'; container.scrollTop = container.scrollHeight; }
-    es.onerror = function(){ es.close(); setTimeout(connectLogs,5000); }
-  } else { // polling fallback
-    setInterval(async ()=>{ const r=await fetch('/api/v2/logs?recent=20'); const j=await r.json(); const c=document.getElementById('logContainer'); c.innerHTML = j.lines.join('<br/>'); c.scrollTop = c.scrollHeight; },3000);
-  }
-}
-connectLogs();
+    function loadVaultFromLocal(){
+      vaultState = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      document.getElementById('vault-core').innerHTML='';
+      document.getElementById('vault-render').innerHTML='';
+      document.getElementById('vault-audio').innerHTML='';
+      document.getElementById('vault-cloud').innerHTML='';
+      document.getElementById('vault-ads').innerHTML='';
+      const mapping = { core:'vault-core', render:'vault-render', audio:'vault-audio', cloud:'vault-cloud', ads:'vault-ads' };
+      for(const k in mapping){ const entries = (vaultState[k]||[]); entries.forEach(en=> addVaultRow(k, en.name||'', en.key||'')); }
+      document.getElementById('masterPin').value = vaultState.masterPin || '';
+    }
+    function saveVaultToLocal(){
+      const mapping = { core:'vault-core', render:'vault-render', audio:'vault-audio', cloud:'vault-cloud', ads:'vault-ads' };
+      const out = {};
+      for(const k in mapping){ out[k] = []; const cont = document.getElementById(mapping[k]); cont.querySelectorAll('div').forEach(r=>{ const inputs=r.querySelectorAll('input'); if(inputs.length>=2){ out[k].push({ name: inputs[0].value.trim(), key: inputs[1].value.trim() }); } }); }
+      out.masterPin = document.getElementById('masterPin').value.trim(); vaultState = out; localStorage.setItem(storageKey, JSON.stringify(out));
+      // auto sync to server without blocking UI
+      try{ outSyncToServer(out); }catch(e){ console.warn('Vault sync failed', e); }
+    }
 
-// Exports
-document.getElementById('btn-download-zip').addEventListener('click', async ()=>{ if(!lastTaskId) return alert('No build ready'); const gid = lastTaskId.replace('GAME_',''); const url = `/exports/${gid}.zip`; window.open(url,'_blank'); });
+    async function outSyncToServer(state){
+      // for each service try to POST to /api/v2/vault/store with body {service, key}
+      // server may accept different payloads; best-effort batched sync
+      for(const cat of Object.keys(state)){
+        if(cat==='masterPin') continue;
+        for(const entry of state[cat]||[]){ if(entry && entry.key){ try{ await fetch('/api/v2/vault/store', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ service: entry.name || cat, key: entry.key }) }); } catch(_){} } }
+      }
+    }
 
-// load periodically
-setInterval(loadMyGames, 30000);
-</script>
+    document.getElementById('btnVaultSave').addEventListener('click', ()=>{ saveVaultToLocal(); vaultModal.style.display='none'; alert('Vault saved locally and sync attempted.'); });
+
+    // escape helper
+    function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    // initialize vault on page load
+    loadVaultFromLocal();
+
+    // --- My Games hub ---
+    async function loadMyGames(){
+      try{
+        const res = await nexusFetch('/api/v1/games');
+        if(!res.ok) throw new Error('Failed to fetch');
+        const data = await res.json(); const list = document.getElementById('myGamesList'); list.innerHTML='';
+        (data.games||[]).forEach(g=>{
+          const card = document.createElement('div'); card.className='p-2 rounded border bg-white';
+          card.innerHTML = `<div class='flex items-center justify-between'><div><div class='font-semibold text-sm'>${g.game_id}</div><div class='text-xs text-slate-500'>${g.preview_url||''}</div></div><div class='flex items-center gap-2'><button data-id='${g.game_id}' class='px-2 py-1 rounded bg-indigo-50 text-indigo-700 playBtn text-xs'>Play</button><button data-id='${g.game_id}' class='px-2 py-1 rounded bg-emerald-50 text-emerald-700 publishBtn text-xs'>Publish</button></div></div>`;
+          list.appendChild(card);
+        });
+        // attach handlers
+        document.querySelectorAll('.playBtn').forEach(b=>b.addEventListener('click', (ev)=>{ const gid=ev.target.getAttribute('data-id'); openPreview(gid); }));
+        document.querySelectorAll('.publishBtn').forEach(b=>b.addEventListener('click', async (ev)=>{ const gid=ev.target.getAttribute('data-id'); await publishBundle(gid); }));
+      }catch(e){ console.warn('Load games failed', e); }
+    }
+    document.getElementById('refreshGames').addEventListener('click', loadMyGames);
+    document.getElementById('openGamesBtn').addEventListener('click', loadMyGames);
+    loadMyGames();
+
+    // Play preview into iframe
+    async function openPreview(gameId){
+      try{
+        const previewUrl = `/exports/${gameId}/index.html`;
+        const r = await fetch(previewUrl); const html = await r.text(); const iframe = document.getElementById('viewportIframe'); iframe.srcdoc = html;
+      }catch(e){ console.warn('preview failed', e); }
+    }
+
+    async function publishBundle(gameId){
+      try{
+        const res = await nexusFetch(`/api/v1/games/${gameId}/publish`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ targets:['web','capacitor','tauri'] }) });
+        const j = await res.json(); alert('Publish result: ' + JSON.stringify(j.published || j));
+      }catch(e){ alert('Publish failed: '+e); }
+    }
+
+    // --- Generation workflow ---
+    let lastTask = null;
+    document.getElementById('btnGenerate').addEventListener('click', async ()=>{
+      const prompt = document.getElementById('gamePrompt').value.trim(); if(!prompt) return alert('Please write a prompt');
+      const payload = { prompt, game_type: 'interactive' };
+      document.getElementById('generationProgress').style.display='block'; updateProgress(5,'Queued');
+      try{
+        const res = await nexusFetch('/api/v2/generate/game', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const job = await res.json(); lastTask = job.task_id; pollTask(job.task_id);
+      }catch(e){ console.error(e); updateProgress(0,'Failed'); }
+    });
+
+    function updateProgress(percent, text){ document.getElementById('progressBar').style.width = percent + '%'; document.getElementById('progressText').innerText = text; }
+
+    async function pollTask(taskId){
+      try{
+        const res = await fetch(`/api/v2/status/${taskId}`); const j = await res.json(); const p = j.progress || 0; updateProgress(p, j.status || 'Working');
+        if(j.status === 'SUCCESS' && j.result){
+          // If result contains final_build HTML, render immediately
+          if(j.result.final_build){ document.getElementById('viewportIframe').srcdoc = j.result.final_build; }
+          // Otherwise attempt to open exported preview
+          if(j.result && j.result.final_build === undefined){ // check preview url
+            const gid = (taskId||'').replace('GAME_',''); const preview = `/exports/${gid}/index.html`;
+            try{ const r = await fetch(preview); if(r.ok){ const html = await r.text(); document.getElementById('viewportIframe').srcdoc = html; } }catch(e){}
+          }
+          updateProgress(100,'Completed'); loadMyGames();
+        } else if(j.status === 'FAILED'){ updateProgress(100,'Failed'); alert('Generation failed: '+JSON.stringify(j.result||j)); }
+        else setTimeout(()=>pollTask(taskId), 1200);
+      }catch(e){ console.warn('poll error',e); setTimeout(()=>pollTask(taskId),2000); }
+    }
+
+    // Play preview button
+    document.getElementById('playPreviewBtn').addEventListener('click', ()=>{ if(lastTask){ const gid = lastTask.replace('GAME_',''); openPreview(gid); } else alert('No recent task'); });
+
+    // --- Voice input with Web Speech API ---
+    const btnMic = document.getElementById('btnMic');
+    let recognition = null; let isListening=false;
+    if(window.SpeechRecognition || window.webkitSpeechRecognition){
+      const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new Rec(); recognition.lang='hi-IN'; recognition.interimResults=true; recognition.maxAlternatives=1;
+      recognition.onresult = (ev)=>{ const text = Array.from(ev.results).map(r=>r[0].transcript).join(''); document.getElementById('gamePrompt').value = text; };
+      recognition.onstart = ()=>{ isListening=true; btnMic.classList.add('ring-2','ring-indigo-300'); };
+      recognition.onend = ()=>{ isListening=false; btnMic.classList.remove('ring-2','ring-indigo-300'); };
+      recognition.onerror = (e)=>{ console.warn('speech error', e); };
+    }
+    btnMic.addEventListener('click', ()=>{ if(!recognition) return alert('SpeechRecognition not supported'); if(isListening) recognition.stop(); else recognition.start(); });
+
+    // --- Logs: SSE or polling fallback ---
+    const logContainer = document.getElementById('logContainer');
+    async function fetchLogs(){ try{ const r = await fetch('/api/v2/logs?recent=200'); if(!r.ok) return; const j = await r.json(); logContainer.innerHTML = j.lines.map(l=>`<div>${escapeHtml(l)}</div>`).join(''); logContainer.scrollTop = logContainer.scrollHeight; }catch(e){ console.warn(e); } }
+    // Try EventSource first (if server supports SSE)
+    if(typeof(EventSource)!=='undefined'){
+      try{
+        const es = new EventSource('/api/v2/logs');
+        es.onmessage = (ev)=>{ try{ const obj = JSON.parse(ev.data); if(obj.lines) logContainer.innerHTML = obj.lines.map(l=>`<div>${escapeHtml(l)}</div>`).join(''); else logContainer.innerHTML += `<div>${escapeHtml(ev.data)}</div>`; logContainer.scrollTop = logContainer.scrollHeight; }catch(e){ logContainer.innerHTML += `<div>${escapeHtml(ev.data)}</div>`; logContainer.scrollTop = logContainer.scrollHeight; } };
+        es.onerror = (e)=>{ es.close(); setInterval(fetchLogs, 2500); };
+      }catch(e){ setInterval(fetchLogs, 2500); }
+    } else setInterval(fetchLogs, 2500);
+
+    document.getElementById('btnCopyLogs').addEventListener('click', ()=>{ navigator.clipboard.writeText(logContainer.innerText); alert('Copied logs'); });
+    document.getElementById('btnClearLogs').addEventListener('click', ()=>{ logContainer.innerHTML=''; });
+    document.getElementById('btnDownloadLogs').addEventListener('click', ()=>{ const blob = new Blob([logContainer.innerText], {type:'text/plain'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='godnode_logs.txt'; a.click(); URL.revokeObjectURL(url); });
+
+    // Periodic latency update
+    async function updateLatency(){ try{ const t0 = performance.now(); const r = await fetch('/api/v2/status'); const t1 = performance.now(); const ms = Math.round(t1-t0); document.getElementById('latencyBadge').innerText = ms + 'ms'; }catch(e){ document.getElementById('latencyBadge').innerText = '--'; } }
+    setInterval(updateLatency, 3000); updateLatency();
+
+    // On load try to auto open last preview
+    (async ()=>{ const last = localStorage.getItem('GOD_NODE_LAST_PREVIEW'); if(last){ try{ const r = await fetch(last); if(r.ok){ document.getElementById('viewportIframe').src = last; } }catch(e){} } })();
+
+    // persist lastPreview when iframe loads
+    document.getElementById('viewportIframe').addEventListener('load', function(){ try{ localStorage.setItem('GOD_NODE_LAST_PREVIEW', this.src); }catch(e){} });
+
+    // ensure vault saved on unload
+    window.addEventListener('beforeunload', ()=> saveVaultToLocal());
+
+  </script>
 </body>
 </html>
