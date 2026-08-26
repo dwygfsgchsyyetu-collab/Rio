@@ -1,199 +1,127 @@
 """
-god_brain/orchestrator.py
-
-ENTERPRISE EDITION: God Swarm Orchestrator
-Handles DAG dependency execution, adaptive concurrency, and auto-healing.
+Production Orchestrator for God Node V2
+- Calls GeminiAdapter to generate HTML or structured game code
+- Sanitizes output and writes final build to /exports/{game_id}/index.html
+- Zips the build into /exports/{game_id}.zip
+- Returns a status dict suitable for frontend polling
 """
-
-import asyncio
-import logging
-import json
-import time
-import inspect
 import re
-from typing import Dict, Any, List
+import os
+import json
+import logging
+import shutil
+import zipfile
+from pathlib import Path
+from typing import Dict, Any, List, Optional
 
-# Importing Swarm Agents
-from god_brain.agents.director_agent import DirectorAgent
-from god_brain.agents.asset_generator_agent import AssetGeneratorAgent
-from god_brain.agents.map_builder_agent import MapBuilderAgent
-from god_brain.agents.physics_agent import PhysicsAgent
-from god_brain.agents.qa_tester_agent import QATesterAgent
+from god_brain.api_nexus import GeminiAdapter
+from game_compilers.universal_builder import create_threejs_build, EXPORTS_DIR
 
-logger = logging.getLogger("GodOrchestrator")
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - [ORCHESTRATOR] - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+logger = logging.getLogger("god_brain.orchestrator")
 
-class GodOrchestrator:
+# Utility: sanitize model output (strip markdown fences and leading/trailing whitespace)
+_FENCE_RE = re.compile(r"```(?:[\w+-]+)?\n(?P<code>.*)```", re.S)
+
+
+def _strip_code_fences(text: str) -> str:
+    if not text:
+        return text
+    # Replace all fenced code blocks with their inner code
+    def _repl(m):
+        return m.group('code')
+    cleaned = _FENCE_RE.sub(_repl, text)
+    # Also strip any remaining leading/trailing backticks/newlines
+    cleaned = cleaned.strip()
+    # If the agent returned JSON wrapped in markdown, attempt to extract the JSON payload
+    # but prefer raw HTML if present
+    return cleaned
+
+
+async def orchestrate_game(prompt: str, game_id: Optional[str] = None, language: str = 'hi', model: str = 'gemini') -> Dict[str, Any]:
+    """Orchestrate end-to-end generation of a Three.js game from a user prompt.
+
+    Steps:
+      1. Call GeminiAdapter to obtain generation output
+      2. Sanitize output (strip markdown fences)
+      3. Ensure /exports/{game_id}/ exists and write index.html
+      4. Create/refresh /exports/{game_id}.zip
+      5. Return status with preview and download URLs and raw_html to allow immediate iframe rendering
     """
-    Enterprise-Grade Swarm Orchestrator with DAG Dependency Execution,
-    Adaptive Concurrency, and Automatic Self-Healing.
-    Manages parallel execution of AI agents while strictly adhering to external API rate limits.
-    Equipped with Smart Resolver and Bulletproof JSON Extraction.
-    """
-    def __init__(self):
-        logger.info("Initializing God Node Orchestrator 2040... Waking up Manager Agents.")
-        self.director = DirectorAgent()
-        self.asset_gen = AssetGeneratorAgent()
-        self.map_builder = MapBuilderAgent()
-        self.physics = PhysicsAgent()
-        self.qa_tester = QATesterAgent()
-        
-        # Adaptive rate control parameters
-        self.max_concurrent_agents = 5 
-        self.semaphore = asyncio.Semaphore(self.max_concurrent_agents)
-        self.failure_threshold = 3
-        self.circuit_open = False
+    task_id = f"GAME_{game_id or 'local'}"
+    game_id = game_id or task_id
 
-    def _rescue_json_data(self, data: Any) -> Any:
-        """
-        DOUBLE-LAYER FILTER: Automatically cleans markdown tags and extracts pure JSON.
-        Rescues agent outputs that failed due to 'JSON Decode Error'.
-        """
-        if isinstance(data, dict):
-            if data.get("status") == "FAILED" and "raw_output" in data:
-                text_to_clean = str(data["raw_output"])
+    adapter = GeminiAdapter(None)
+
+    try:
+        result = await adapter.generate(prompt, language=language, model=model)
+    except Exception as e:
+        logger.exception("Orchestrator: generation failed: %s", e)
+        return {"task_id": task_id, "status": "FAILED", "error": str(e)}
+
+    raw_text = result.get('text', '') if isinstance(result, dict) else str(result)
+    cleaned = _strip_code_fences(raw_text)
+
+    # Prepare exports directory
+    build_dir = EXPORTS_DIR / game_id
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+    build_dir.mkdir(parents=True, exist_ok=True)
+
+    # If cleaned text already looks like a complete HTML document, write it directly
+    html_to_write = cleaned
+    if not cleaned.lower().strip().startswith("<!doctype html") and not cleaned.lower().strip().startswith("<html"):
+        # If it's not a full HTML document, we will embed it into the universal template
+        # Use create_threejs_build to scaffold a default build, then inject the generated JS/HTML into index.html
+        try:
+            # create default build (no assets)
+            create_threejs_build(game_id, assets=[], title=f"God Node - {game_id}")
+            index_path = build_dir / 'index.html'
+            if index_path.exists():
+                # Read scaffold and attempt to inject the cleaned content into a placeholder
+                scaffold = index_path.read_text(encoding='utf-8')
+                # Attempt to replace default scene comment block with the cleaned code; fallback to prepend
+                if '<!-- GENERATED_GAME_CONTENT -->' in scaffold:
+                    scaffold = scaffold.replace('<!-- GENERATED_GAME_CONTENT -->', cleaned)
+                    html_to_write = scaffold
+                else:
+                    # Prepend cleaned content inside body before existing script
+                    html_to_write = re.sub(r"(<body[^>]*>)", r"\1\n<!-- GENERATED -->\n"+cleaned, scaffold, count=1, flags=re.I)
             else:
-                return data
-        elif isinstance(data, str):
-            text_to_clean = data
-        else:
-            return data
-            
-        # LAYER 1: Strip common Markdown formatting AI models add
-        text_to_clean = text_to_clean.replace("```json", "").replace("```", "").strip()
-
-        try:
-            return json.loads(text_to_clean)
-        except json.JSONDecodeError:
-            try:
-                match = re.search(r'(\{.*\}|\[.*\])', text_to_clean, re.DOTALL)
-                if match:
-                    return json.loads(match.group(1))
-            except Exception:
-                pass
-                
-        return data
-
-    async def _resolve_agent_call(self, agent_method, *args, **kwargs):
-        """
-        Executes an agent method cleanly whether sync or async,
-        and applies the JSON rescue filter to the output.
-        """
-        if inspect.iscoroutinefunction(agent_method):
-            result = await agent_method(*args, **kwargs)
-        else:
-            result = await asyncio.to_thread(agent_method, *args, **kwargs)
-            
-        if inspect.isawaitable(result):
-            result = await result
-            
-        return self._rescue_json_data(result)
-
-    async def _execute_swarm_task_safely(self, task_id: int, agent, task_data: str, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Executes a single agent task safely behind an adaptive Semaphore.
-        Includes circuit-breaker isolation and dynamic exponential backoff.
-        """
-        async with self.semaphore:
-            if self.circuit_open:
-                logger.warning(f"[CIRCUIT BREAKER] Task #{task_id} executing via safe fallback mode.")
-                return {"task_id": task_id, "status": "FALLBACK", "result": {"fallback": True, "directive": task_data}}
-
-            retries = 3
-            backoff = 1.5
-            
-            for attempt in range(retries):
-                try:
-                    logger.info(f"[SWARM TASK #{task_id}] Executing via {agent.role_name} (Attempt {attempt + 1})...")
-                    result = await self._resolve_agent_call(agent.perform_role, task_data, **kwargs)
-                    return {"task_id": task_id, "status": "SUCCESS", "result": result}
-                
-                except Exception as e:
-                    logger.warning(f"[SWARM TASK #{task_id}] Attempt {attempt + 1} failed: {str(e)}")
-                    if attempt < retries - 1:
-                        await asyncio.sleep(backoff)
-                        backoff *= 2
-                    else:
-                        logger.error(f"[SWARM TASK #{task_id}] CRITICAL FAILURE after {retries} attempts.")
-                        return {"task_id": task_id, "status": "FAILED", "error": str(e)}
-
-    async def generate_full_game_with_swarm(self, prompt: str, agent_count: int = 10, auto_kill_after_execution: bool = True) -> Dict[str, Any]:
-        """
-        The Master Execution DAG: Executes director -> parallel swarm assets/maps -> physics -> assembly -> QA.
-        """
-        start_time = time.time()
-        logger.info(f"Starting Advanced Swarm Pipeline for directive: '{prompt}' with swarm size: {agent_count}")
-
-        try:
-            # STEP 1: THE DIRECTOR (Strategic Architecture)
-            logger.info("STEP 1: Director creating execution blueprint...")
-            game_plan = await self._resolve_agent_call(self.director.perform_role, prompt)
-            
-            if not game_plan or (isinstance(game_plan, dict) and game_plan.get("status") == "FAILED"):
-                error_msg = game_plan.get('error', 'Unknown Error') if isinstance(game_plan, dict) else 'Invalid Format'
-                raise ValueError(f"Director Agent failed: {error_msg}")
-
-            # STEP 2 & 3: PARALLEL DAG EXECUTION (Assets & Maps)
-            logger.info(f"STEP 2 & 3: Dispatching parallel DAG workers ({agent_count} agents)...")
-            
-            asset_tasks_count = max(1, int(agent_count * 0.7))
-            map_tasks_count = max(1, int(agent_count * 0.3))
-            
-            swarm_tasks = []
-            
-            for i in range(asset_tasks_count):
-                task_desc = f"Generate 3D asset part {i+1} based on plan: {str(game_plan)}"
-                swarm_tasks.append(self._execute_swarm_task_safely(
-                    task_id=i, 
-                    agent=self.asset_gen, 
-                    task_data=task_desc, 
-                    kwargs={"style": "optimized"}
-                ))
-                
-            for i in range(map_tasks_count):
-                task_desc = f"Design sector {i+1} of map based on theme: {prompt}"
-                swarm_tasks.append(self._execute_swarm_task_safely(
-                    task_id=asset_tasks_count + i, 
-                    agent=self.map_builder, 
-                    task_data=task_desc, 
-                    kwargs={"generated_assets": ["placeholder_list"]}
-                ))
-
-            swarm_results = await asyncio.gather(*swarm_tasks)
-            successful_assets = [res["result"] for res in swarm_results if res["status"] == "SUCCESS"]
-            logger.info(f"Swarm DAG Phase Complete: {len(successful_assets)}/{len(swarm_tasks)} tasks succeeded.")
-
-            # STEP 4: PHYSICS INJECTION
-            logger.info("STEP 4: Injecting Physics Logic...")
-            physics_context = {"map_data": "compiled_swarm_map", "assets": len(successful_assets)}
-            physics_logic = await self._resolve_agent_call(self.physics.perform_role, environment_details=physics_context)
-
-            # STEP 5 & 6: ASSEMBLY & QA AUTO-HEALING
-            logger.info("STEP 5 & 6: Assembling and submitting to QA Inspector...")
-            raw_game_code = {
-                "architecture": game_plan,
-                "assets_generated": len(successful_assets),
-                "physics_engine": physics_logic,
-                "timestamp": time.time()
-            }
-            
-            final_game = await self._resolve_agent_call(self.qa_tester.perform_role, generated_code=json.dumps(raw_game_code, indent=2), error_logs=None)
-
-            execution_time = round(time.time() - start_time, 2)
-            logger.info(f"PIPELINE COMPLETED IN {execution_time}s!")
-
-            return {
-                "status": "SUCCESS",
-                "message": f"Built & verified by {agent_count} AI agents.",
-                "execution_time": f"{execution_time}s",
-                "final_build": final_game
-            }
-
+                # Fallback: wrap cleaned content in minimal HTML
+                html_to_write = f"<!doctype html>\n<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{game_id}</title></head><body>\n{cleaned}\n</body></html>"
         except Exception as e:
-            logger.error(f"ORCHESTRATOR ERROR: Pipeline fallback engaged -> {str(e)}")
-            return {"status": "FAILED", "error": str(e), "stage": "Execution Pipeline"}
+            logger.exception("Orchestrator: create_threejs_build scaffold failed: %s", e)
+            # fallback to writing minimal HTML
+            html_to_write = f"<!doctype html>\n<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{game_id}</title></head><body>\n{cleaned}\n</body></html>"
+
+    # Ensure index.html is written
+    index_file = build_dir / 'index.html'
+    index_file.write_text(html_to_write, encoding='utf-8')
+
+    # Recreate zip bundle
+    zip_path = EXPORTS_DIR / f"{game_id}.zip"
+    if zip_path.exists():
+        zip_path.unlink()
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for p in build_dir.rglob('*'):
+            zf.write(p, arcname=p.relative_to(build_dir))
+
+    preview_url = f"/exports/{game_id}/index.html"
+    zip_url = f"/exports/{game_id}.zip"
+
+    logger.info("Orchestrator: generated game %s, preview=%s, zip=%s", game_id, preview_url, zip_url)
+
+    return {
+        "task_id": task_id,
+        "status": "SUCCESS",
+        "preview_url": preview_url,
+        "download_url": zip_url,
+        "raw_html": html_to_write,
+        "provider_raw": result.get('raw') if isinstance(result, dict) else None
+    }
+
+
+# Convenience synchronous wrapper for compatibility
+def orchestrate_game_sync(prompt: str, game_id: Optional[str] = None, language: str = 'hi', model: str = 'gemini') -> Dict[str, Any]:
+    import asyncio
+    return asyncio.get_event_loop().run_until_complete(orchestrate_game(prompt, game_id=game_id, language=language, model=model))
