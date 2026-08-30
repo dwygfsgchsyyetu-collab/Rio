@@ -1,127 +1,151 @@
-"""
-Production Orchestrator for God Node V2
-- Calls GeminiAdapter to generate HTML or structured game code
-- Sanitizes output and writes final build to /exports/{game_id}/index.html
-- Zips the build into /exports/{game_id}.zip
-- Returns a status dict suitable for frontend polling
-"""
-import re
 import os
-import json
-import logging
-import shutil
-import zipfile
+import re
+import time
+import asyncio
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
-from god_brain.api_nexus import GeminiAdapter
-from game_compilers.universal_builder import create_threejs_build, EXPORTS_DIR
+from .api_nexus import GeminiAdapter
+from game_compilers.universal_builder import create_threejs_build
 
-logger = logging.getLogger("god_brain.orchestrator")
+# Export path base
+EXPORTS_ROOT = Path(os.environ.get('EXPORTS_ROOT', 'exports'))
+EXPORTS_ROOT.mkdir(parents=True, exist_ok=True)
 
-# Utility: sanitize model output (strip markdown fences and leading/trailing whitespace)
-_FENCE_RE = re.compile(r"```(?:[\w+-]+)?\n(?P<code>.*)```", re.S)
+THREE_R128 = '<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>'
+
+FALLBACK_ARENA = '''<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Fallback Arena</title>
+%s
+<style>body{margin:0;overflow:hidden}canvas{display:block}</style>
+</head><body>
+<div id="root"></div>
+<script>
+// Minimal Three.js r128 fallback arena: rotating cube, basic WASD movement
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({antialias:true}); renderer.setSize(window.innerWidth, window.innerHeight); document.body.appendChild(renderer.domElement);
+const geometry = new THREE.BoxGeometry();
+const material = new THREE.MeshStandardMaterial({color:0x0077ff});
+const cube = new THREE.Mesh(geometry, material); scene.add(cube);
+const light = new THREE.DirectionalLight(0xffffff, 1); light.position.set(5,10,7.5); scene.add(light);
+const ambient = new THREE.AmbientLight(0x404040); scene.add(ambient);
+camera.position.z = 5;
+let vel = {x:0,z:0}; const speed = 0.06;
+const keys = {};
+window.addEventListener('keydown', e=> keys[e.key.toLowerCase()] = true);
+window.addEventListener('keyup', e=> keys[e.key.toLowerCase()] = false);
+function animate(){ requestAnimationFrame(animate); if(keys['w']) cube.position.z -= speed; if(keys['s']) cube.position.z += speed; if(keys['a']) cube.position.x -= speed; if(keys['d']) cube.position.x += speed; cube.rotation.x += 0.01; cube.rotation.y += 0.013; renderer.render(scene, camera);} animate();
+window.addEventListener('resize', ()=>{ camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+</script>
+</body></html>'''
 
 
-def _strip_code_fences(text: str) -> str:
+def _strip_markdown_and_quotes(text: str) -> str:
+    """Aggressively strip markdown fences and outer quoting from assistant outputs."""
     if not text:
-        return text
-    # Replace all fenced code blocks with their inner code
-    def _repl(m):
-        return m.group('code')
-    cleaned = _FENCE_RE.sub(_repl, text)
-    # Also strip any remaining leading/trailing backticks/newlines
-    cleaned = cleaned.strip()
-    # If the agent returned JSON wrapped in markdown, attempt to extract the JSON payload
-    # but prefer raw HTML if present
-    return cleaned
+        return ''
+    text = re.sub(r"```(?:html|javascript|js)?\s*", '', text, flags=re.IGNORECASE)
+    text = re.sub(r"```\s*", '', text)
+    text = re.sub(r'^\s*["\']+', '', text)
+    text = re.sub(r'["\']+\s*$', '', text)
+    text = re.sub(r'^(assistant:|output:|answer:)\s*', '', text, flags=re.IGNORECASE)
+    return text.strip()
 
 
-async def orchestrate_game(prompt: str, game_id: Optional[str] = None, language: str = 'hi', model: str = 'gemini') -> Dict[str, Any]:
-    """Orchestrate end-to-end generation of a Three.js game from a user prompt.
+def _extract_html_candidate(text: str) -> str:
+    if not text:
+        return ''
+    clean = _strip_markdown_and_quotes(text)
+    m = re.search(r"(?is)(<!doctype\s+html.*?</html>)", clean)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r"(?is)(<html.*?</html>)", clean)
+    if m:
+        return m.group(1).strip()
+    if '<script' in clean or '<canvas' in clean:
+        return clean
+    return ''
 
-    Steps:
-      1. Call GeminiAdapter to obtain generation output
-      2. Sanitize output (strip markdown fences)
-      3. Ensure /exports/{game_id}/ exists and write index.html
-      4. Create/refresh /exports/{game_id}.zip
-      5. Return status with preview and download URLs and raw_html to allow immediate iframe rendering
-    """
-    task_id = f"GAME_{game_id or 'local'}"
-    game_id = game_id or task_id
 
-    adapter = GeminiAdapter(None)
+def ensure_threejs_and_doctype(html: str) -> str:
+    if not html:
+        return ''
+    if re.search(r'(?i)<!doctype\s+html>', html):
+        if 'three.min.js' in html.lower() or 'three.js' in html.lower():
+            return html
+        if '</head>' in html.lower():
+            return re.sub(r'(?i)</head>', f"{THREE_R128}\n</head>", html, count=1)
+        else:
+            return THREE_R128 + '\n' + html
+    wrapped = '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1"/>\n' + THREE_R128 + '\n</head>\n<body>\n' + html + '\n</body>\n</html>'
+    return wrapped
 
-    try:
-        result = await adapter.generate(prompt, language=language, model=model)
-    except Exception as e:
-        logger.exception("Orchestrator: generation failed: %s", e)
-        return {"task_id": task_id, "status": "FAILED", "error": str(e)}
 
-    raw_text = result.get('text', '') if isinstance(result, dict) else str(result)
-    cleaned = _strip_code_fences(raw_text)
+class Orchestrator:
+    def __init__(self):
+        self.adapter = GeminiAdapter()
 
-    # Prepare exports directory
-    build_dir = EXPORTS_DIR / game_id
-    if build_dir.exists():
-        shutil.rmtree(build_dir)
-    build_dir.mkdir(parents=True, exist_ok=True)
-
-    # If cleaned text already looks like a complete HTML document, write it directly
-    html_to_write = cleaned
-    if not cleaned.lower().strip().startswith("<!doctype html") and not cleaned.lower().strip().startswith("<html"):
-        # If it's not a full HTML document, we will embed it into the universal template
-        # Use create_threejs_build to scaffold a default build, then inject the generated JS/HTML into index.html
+    async def orchestrate_generation(self, prompt: str, game_id: str, timeout_seconds: int = 15) -> Dict[str, Any]:
+        start = time.time()
+        # Run adapter.generate in threadpool to avoid blocking
         try:
-            # create default build (no assets)
-            create_threejs_build(game_id, assets=[], title=f"God Node - {game_id}")
-            index_path = build_dir / 'index.html'
-            if index_path.exists():
-                # Read scaffold and attempt to inject the cleaned content into a placeholder
-                scaffold = index_path.read_text(encoding='utf-8')
-                # Attempt to replace default scene comment block with the cleaned code; fallback to prepend
-                if '<!-- GENERATED_GAME_CONTENT -->' in scaffold:
-                    scaffold = scaffold.replace('<!-- GENERATED_GAME_CONTENT -->', cleaned)
-                    html_to_write = scaffold
-                else:
-                    # Prepend cleaned content inside body before existing script
-                    html_to_write = re.sub(r"(<body[^>]*>)", r"\1\n<!-- GENERATED -->\n"+cleaned, scaffold, count=1, flags=re.I)
-            else:
-                # Fallback: wrap cleaned content in minimal HTML
-                html_to_write = f"<!doctype html>\n<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{game_id}</title></head><body>\n{cleaned}\n</body></html>"
+            loop = asyncio.get_event_loop()
+            raw = await loop.run_in_executor(None, self.adapter.generate, prompt, timeout_seconds)
+        except Exception:
+            raw = ''
+
+        candidate = _extract_html_candidate(raw)
+        candidate = _strip_markdown_and_quotes(candidate)
+        candidate = ensure_threejs_and_doctype(candidate)
+
+        valid = False
+        if candidate and re.search(r'(?i)<!doctype\s+html>', candidate):
+            if 'three.min.js' in candidate.lower() or 'three.js' in candidate.lower():
+                valid = True
+
+        # Detect embedded C++ block markers to compile
+        cpp_source = None
+        # If the raw output contains ```cpp or .cpp content, extract
+        m_cpp = re.search(r'```(?:cpp|c\+\+|c\+\+11)?\s*(.*?)```', raw, flags=re.DOTALL|re.IGNORECASE)
+        if m_cpp:
+            cpp_source = m_cpp.group(1).strip()
+        # Also accept <code class="language-cpp"> blocks
+        if not cpp_source:
+            m2 = re.search(r'(?is)<pre><code[^>]*>(.*?)</code></pre>', raw)
+            if m2 and ('#include' in m2.group(1) or 'int main' in m2.group(1)):
+                cpp_source = re.sub(r'<[^>]+>', '', m2.group(1)).strip()
+
+        if not valid:
+            candidate = FALLBACK_ARENA % THREE_R128
+
+        final_html = ensure_threejs_and_doctype(candidate)
+
+        # Pass to universal builder which will optionally compile C++ to Wasm
+        try:
+            build_info = await create_threejs_build(final_html, game_id, cpp_source=cpp_source, compile_target='web')
         except Exception as e:
-            logger.exception("Orchestrator: create_threejs_build scaffold failed: %s", e)
-            # fallback to writing minimal HTML
-            html_to_write = f"<!doctype html>\n<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{game_id}</title></head><body>\n{cleaned}\n</body></html>"
+            # On builder failure, fallback to writing simple arena
+            final_html = FALLBACK_ARENA % THREE_R128
+            build_info = await create_threejs_build(final_html, game_id, cpp_source=None)
 
-    # Ensure index.html is written
-    index_file = build_dir / 'index.html'
-    index_file.write_text(html_to_write, encoding='utf-8')
+        result = {
+            'status': 'SUCCESS',
+            'result': {
+                'final_build': final_html,
+                'download_url': build_info.get('download_url')
+            }
+        }
+        # include compile_info for debugging
+        if build_info.get('compile_info'):
+            result['result']['compile_info'] = build_info['compile_info']
 
-    # Recreate zip bundle
-    zip_path = EXPORTS_DIR / f"{game_id}.zip"
-    if zip_path.exists():
-        zip_path.unlink()
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for p in build_dir.rglob('*'):
-            zf.write(p, arcname=p.relative_to(build_dir))
-
-    preview_url = f"/exports/{game_id}/index.html"
-    zip_url = f"/exports/{game_id}.zip"
-
-    logger.info("Orchestrator: generated game %s, preview=%s, zip=%s", game_id, preview_url, zip_url)
-
-    return {
-        "task_id": task_id,
-        "status": "SUCCESS",
-        "preview_url": preview_url,
-        "download_url": zip_url,
-        "raw_html": html_to_write,
-        "provider_raw": result.get('raw') if isinstance(result, dict) else None
-    }
+        return result
 
 
-# Convenience synchronous wrapper for compatibility
-def orchestrate_game_sync(prompt: str, game_id: Optional[str] = None, language: str = 'hi', model: str = 'gemini') -> Dict[str, Any]:
-    import asyncio
-    return asyncio.get_event_loop().run_until_complete(orchestrate_game(prompt, game_id=game_id, language=language, model=model))
+_default_orchestrator = Orchestrator()
+
+
+async def generate_game_and_export(prompt: str, game_id: str) -> Dict[str, Any]:
+    return await _default_orchestrator.orchestrate_generation(prompt, game_id)

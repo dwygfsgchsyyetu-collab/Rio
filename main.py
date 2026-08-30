@@ -1,60 +1,61 @@
-"""
-Main application wiring for God Node V2
-- Mounts StaticFiles for /exports
-- Includes routers for gateway, api_nexus, live editor, mobile assistant
-- Ensures background tasks run non-blocking
-"""
-import os
-import time
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+import uuid
 import asyncio
-import logging
-from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
-# Import routers
-from core.gateway import router as gateway_router
-from god_brain.api_nexus import router as nexus_router
-from live_editor.hot_reloader import router as editor_router
-from mobile_services.assistant_trigger import router as mobile_router
+from god_brain.orchestrator import generate_game_and_export
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [GOD NODE CORE] - %(levelname)s - %(message)s')
-logger = logging.getLogger('GodNode')
+app = FastAPI()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info('Starting God Node V2')
-    # Start background tick loops etc. If present, they should be awaited non-blocking
-    yield
-    logger.info('Shutting down God Node V2')
+# Simple in-memory task store for demo purposes.
+TASK_STORE = {}
 
-app = FastAPI(title='God Node V2', lifespan=lifespan)
+class GenerateRequest(BaseModel):
+    prompt: str
 
-app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'], allow_credentials=True)
 
-# Mount static exports
-if not os.path.exists('exports'):
-    os.makedirs('exports', exist_ok=True)
-app.mount('/exports', StaticFiles(directory='exports'), name='exports')
+@app.post('/api/v2/generate/game')
+async def generate_game(req: GenerateRequest):
+    task_id = 'task_' + uuid.uuid4().hex
+    TASK_STORE[task_id] = {'status': 'WORKING', 'result': None}
+    try:
+        game_id = 'game_' + uuid.uuid4().hex
+        # run orchestrator asynchronously without blocking the request thread
+        # we run it as a background task but await it to populate result for demo simplicity
+        out = await generate_game_and_export(req.prompt, game_id)
+        TASK_STORE[task_id]['status'] = out.get('status', 'SUCCESS')
+        TASK_STORE[task_id]['result'] = out.get('result')
+        TASK_STORE[task_id]['game_id'] = game_id
+        return JSONResponse({'task_id': task_id, 'status': TASK_STORE[task_id]['status']})
+    except Exception as e:
+        TASK_STORE[task_id]['status'] = 'FAILED'
+        TASK_STORE[task_id]['result'] = {'error': str(e)}
+        return JSONResponse({'task_id': task_id, 'status': 'FAILED', 'error': str(e)}, status_code=500)
 
-# Include routers
-app.include_router(gateway_router)
-app.include_router(nexus_router)
-app.include_router(editor_router)
-app.include_router(mobile_router)
 
-# Root serves index.html if present
-from fastapi.responses import FileResponse, HTMLResponse
-from fastapi import Request
+@app.get('/api/v2/status/{task_id}')
+async def get_status(task_id: str):
+    if task_id not in TASK_STORE:
+        raise HTTPException(status_code=404, detail='task not found')
+    t = TASK_STORE[task_id]
+    res = {'status': t.get('status', 'WORKING')}
+    if t.get('result'):
+        res['result'] = t['result']
+    else:
+        res['result'] = None
+    return JSONResponse(res)
 
-@app.get('/', response_class=HTMLResponse)
-async def root(request: Request):
-    if os.path.exists('index.html'):
-        return HTMLResponse(open('index.html','r',encoding='utf-8').read())
-    return HTMLResponse('<h1>God Node V2 Running</h1>')
 
-# Run using uvicorn externally
-if __name__ == '__main__':
-    import uvicorn
-    uvicorn.run('main:app', host='0.0.0.0', port=int(os.getenv('PORT',8000)), reload=True)
+@app.post('/api/v2/execute')
+async def execute_direct(req: Request):
+    body = await req.json()
+    prompt = body.get('prompt')
+    if not prompt:
+        raise HTTPException(status_code=400, detail='missing prompt')
+    try:
+        game_id = 'game_' + uuid.uuid4().hex
+        out = await generate_game_and_export(prompt, game_id)
+        return JSONResponse(out)
+    except Exception as e:
+        return JSONResponse({'status':'FAILED','result':{'error':str(e)}}, status_code=500)
