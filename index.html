@@ -2,494 +2,369 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rio - Ultra-Fast Game Pipeline</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rio Engine - 3D Ultra Pipeline</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
-        
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%);
-            color: #e0e0e0;
-            overflow: hidden;
-            height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #090a10;
+            color: #e2e8f0;
+            min-height: 100vh;
+            overflow-x: hidden;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
-        
-        .container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            height: 100vh;
-            gap: 0;
-        }
-        
-        .control-panel {
-            background: rgba(30, 30, 50, 0.95);
-            padding: 2rem;
+
+        .main-wrapper {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 16px;
             display: flex;
             flex-direction: column;
-            border-right: 1px solid rgba(255, 255, 255, 0.1);
-            overflow-y: auto;
+            gap: 16px;
         }
-        
-        .viewport {
-            background: #000;
-            position: relative;
-            overflow: hidden;
+
+        /* Top Header */
+        .app-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #131622;
+            border: 1px solid #1f2438;
+            border-radius: 12px;
         }
-        
-        .canvas-container {
-            width: 100%;
-            height: 100%;
-        }
-        
-        h1 {
-            font-size: 1.8rem;
-            margin-bottom: 1rem;
-            background: linear-gradient(135deg, #00d4ff, #0099ff);
+
+        .app-title {
+            font-size: 1.25rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #00d2ff, #0070f3);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        .input-group {
-            margin-bottom: 1.5rem;
-        }
-        
-        label {
-            display: block;
-            font-size: 0.9rem;
-            margin-bottom: 0.5rem;
-            color: #b0b0d0;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        textarea, input[type="text"] {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid rgba(0, 212, 255, 0.3);
-            background: rgba(255, 255, 255, 0.05);
-            color: #e0e0e0;
-            border-radius: 4px;
-            font-family: inherit;
-            font-size: 0.95rem;
-            transition: all 0.3s ease;
-        }
-        
-        textarea:focus, input[type="text"]:focus {
-            outline: none;
-            border-color: #00d4ff;
-            box-shadow: 0 0 8px rgba(0, 212, 255, 0.2);
-            background: rgba(255, 255, 255, 0.08);
-        }
-        
-        textarea {
-            resize: vertical;
-            min-height: 100px;
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 0.85rem;
-        }
-        
-        .button-group {
             display: flex;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
+            align-items: center;
+            gap: 8px;
         }
-        
+
+        .status-badge {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: rgba(0, 210, 255, 0.1);
+            color: #00d2ff;
+            border: 1px solid rgba(0, 210, 255, 0.3);
+            text-transform: uppercase;
+        }
+
+        /* Card Panels */
+        .panel-card {
+            background: #131622;
+            border: 1px solid #1f2438;
+            border-radius: 14px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .panel-label {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #798ba3;
+        }
+
+        textarea {
+            width: 100%;
+            height: 95px;
+            background: #090a10;
+            border: 1px solid #272d45;
+            border-radius: 10px;
+            padding: 12px;
+            color: #f1f5f9;
+            font-size: 0.95rem;
+            resize: none;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        textarea:focus {
+            border-color: #00d2ff;
+            box-shadow: 0 0 10px rgba(0, 210, 255, 0.15);
+        }
+
+        /* Buttons */
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+
         button {
             flex: 1;
-            padding: 0.75rem 1.5rem;
+            padding: 14px;
+            border-radius: 10px;
             border: none;
-            background: linear-gradient(135deg, #00d4ff, #0099ff);
-            color: #fff;
-            font-weight: 600;
-            border-radius: 4px;
-            cursor: pointer;
             font-size: 0.95rem;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
-        
-        button:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 16px rgba(0, 212, 255, 0.3);
+
+        .btn-generate {
+            background: linear-gradient(135deg, #00d2ff, #0066ff);
+            color: #ffffff;
+            box-shadow: 0 4px 15px rgba(0, 112, 243, 0.3);
         }
-        
-        button:active:not(:disabled) {
-            transform: translateY(0);
+
+        .btn-generate:active {
+            transform: scale(0.98);
         }
-        
-        button:disabled {
+
+        .btn-generate:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+            transform: none;
         }
-        
-        .button-secondary {
-            background: rgba(100, 100, 140, 0.6);
+
+        .btn-clear {
+            background: #1e2336;
+            color: #94a3b8;
+            max-width: 110px;
         }
-        
-        .progress-section {
-            background: rgba(0, 212, 255, 0.05);
-            border: 1px solid rgba(0, 212, 255, 0.2);
-            border-radius: 4px;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
+
+        /* Progress Box */
+        .progress-box {
             display: none;
+            background: #0d0f18;
+            border: 1px solid #1f2438;
+            border-radius: 12px;
+            padding: 14px;
+            flex-direction: column;
+            gap: 8px;
         }
-        
-        .progress-section.active {
-            display: block;
-            animation: pulse 0.5s ease-in;
+
+        .progress-box.active {
+            display: flex;
         }
-        
-        @keyframes pulse {
-            0% { opacity: 0.8; }
-            100% { opacity: 1; }
-        }
-        
-        .progress-label {
-            font-size: 0.9rem;
-            color: #00d4ff;
-            margin-bottom: 0.5rem;
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
             font-weight: 600;
+            color: #00d2ff;
         }
-        
-        .progress-bar {
+
+        .bar-track {
             width: 100%;
-            height: 6px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 3px;
+            height: 8px;
+            background: #171b2b;
+            border-radius: 4px;
             overflow: hidden;
-            margin-bottom: 0.5rem;
         }
-        
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #00d4ff, #0099ff);
+
+        .bar-fill {
             width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #00d2ff, #0070f3);
             transition: width 0.3s ease;
-            box-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
+            box-shadow: 0 0 10px #00d2ff;
         }
-        
-        .progress-message {
-            font-size: 0.85rem;
-            color: #b0b0d0;
-            margin-top: 0.5rem;
-            min-height: 20px;
-        }
-        
-        .status-section {
-            background: rgba(100, 140, 100, 0.05);
-            border: 1px solid rgba(100, 140, 100, 0.2);
-            border-radius: 4px;
-            padding: 0.75rem;
-            font-size: 0.85rem;
-            color: #a0c0a0;
-            margin-bottom: 1rem;
-            display: none;
-        }
-        
-        .status-section.active {
-            display: block;
-        }
-        
-        .status-section.error {
-            background: rgba(200, 100, 100, 0.05);
-            border-color: rgba(200, 100, 100, 0.2);
-            color: #d0a0a0;
-        }
-        
-        .log-section {
-            flex: 1;
-            background: rgba(0, 0, 0, 0.4);
-            border: 1px solid rgba(0, 212, 255, 0.1);
-            border-radius: 4px;
-            padding: 1rem;
-            margin-bottom: 1rem;
+
+        .terminal-log {
+            background: #05060a;
+            border: 1px solid #1a1e30;
+            border-radius: 8px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #00ffaa;
+            max-height: 85px;
             overflow-y: auto;
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 0.8rem;
         }
-        
-        .log-entry {
-            color: #80d0d0;
-            margin-bottom: 0.25rem;
-            line-height: 1.4;
+
+        /* 3D Viewport Frame */
+        .viewport-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 40px;
         }
-        
-        .log-entry.error {
-            color: #d08080;
+
+        .viewport-wrapper {
+            width: 100%;
+            height: 480px;
+            background: #000;
+            border: 2px solid #00d2ff;
+            border-radius: 14px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
         }
-        
-        .log-entry.success {
-            color: #80d080;
-        }
-        
-        .info-text {
-            font-size: 0.8rem;
-            color: #808088;
-            line-height: 1.5;
-            margin-top: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            padding-top: 1rem;
-        }
-        
-        /* Responsive */
-        @media (max-width: 1024px) {
-            .container {
-                grid-template-columns: 1fr;
-                grid-template-rows: 1fr auto;
-            }
-            
-            .control-panel {
-                border-right: none;
-                border-top: 1px solid rgba(255, 255, 255, 0.1);
-            }
-            
-            .viewport {
-                order: 2;
-            }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="control-panel">
-            <h1>🚀 Rio Ultra-Fast Pipeline</h1>
-            
-            <div class="input-group">
-                <label for="promptInput">Game Prompt</label>
-                <textarea id="promptInput" placeholder="Describe the game you want to generate...">Create a fast-paced space shooter with asteroids and dynamic particle effects using Three.js</textarea>
-            </div>
-            
-            <div class="button-group">
-                <button id="generateBtn" onclick="generateGame()">Generate</button>
-                <button class="button-secondary" id="clearBtn" onclick="clearGame()">Clear</button>
-            </div>
-            
-            <div class="progress-section" id="progressSection">
-                <div class="progress-label" id="progressLabel">Building...</div>
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill"></div>
-                </div>
-                <div class="progress-message" id="progressMessage"></div>
-            </div>
-            
-            <div class="status-section" id="statusSection"></div>
-            
-            <div class="log-section" id="logSection">
-                <div class="log-entry">Rio Pipeline ready. Enter prompt above and click Generate.</div>
-            </div>
-            
-            <div class="info-text">
-                <strong>Ultra-Fast Event-Driven Architecture:</strong><br>
-                • Real-time SSE progress streaming<br>
-                • Concurrent async/thread execution<br>
-                • LRU caching for boilerplate<br>
-                • Direct HTML blob injection<br>
-                • Target: 5-8s end-to-end
-            </div>
-        </div>
+
+    <div class="main-wrapper">
         
-        <div class="viewport">
-            <div class="canvas-container" id="canvasContainer">
-                <div style="display:flex; align-items:center; justify-content:center; height:100%; color:#666; font-size:18px;">
-                    Waiting for generation...
-                </div>
+        <!-- Header -->
+        <div class="app-header">
+            <div class="app-title">🚀 Rio Ultra-Fast V2</div>
+            <div class="status-badge" id="engineStatus">Ready</div>
+        </div>
+
+        <!-- Prompt Panel -->
+        <div class="panel-card">
+            <div class="panel-label">Game Description & Mechanics</div>
+            <textarea id="promptInput" placeholder="Describe your 3D game...">Create a fast-paced space shooter with moving stars, player ship controls, and laser projectiles using Three.js</textarea>
+            
+            <div class="btn-group">
+                <button class="btn-generate" id="genBtn" onclick="triggerBuild()">⚡ GENERATE GAME</button>
+                <button class="btn-clear" onclick="document.getElementById('promptInput').value=''">CLEAR</button>
             </div>
         </div>
+
+        <!-- Progress Box -->
+        <div class="progress-box" id="progressCard">
+            <div class="progress-info">
+                <span id="progressMessage">Initializing...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="bar-track">
+                <div class="bar-fill" id="progressFill"></div>
+            </div>
+            <div class="terminal-log" id="logWindow">[SYSTEM] Ready for next build task.</div>
+        </div>
+
+        <!-- 3D Canvas Viewport -->
+        <div class="viewport-section" id="viewportTarget">
+            <div class="panel-label">🎮 Live 3D WebGL Viewport</div>
+            <div class="viewport-wrapper">
+                <iframe id="viewportFrame" srcdoc="<body style='margin:0;background:#05060a;color:#556;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;'>Press Generate to start 3D Viewport</body>"></iframe>
+            </div>
+        </div>
+
     </div>
-    
+
     <script>
-        const log = (msg, type = 'info') => {
-            const logSection = document.getElementById('logSection');
-            const entry = document.createElement('div');
-            entry.className = `log-entry ${type}`;
-            const timestamp = new Date().toLocaleTimeString();
-            entry.textContent = `[${timestamp}] ${msg}`;
-            logSection.appendChild(entry);
-            logSection.scrollTop = logSection.scrollHeight;
-        };
-        
-        const updateStatus = (status, type = 'info') => {
-            const statusSection = document.getElementById('statusSection');
-            statusSection.textContent = status;
-            statusSection.className = `status-section active ${type}`;
-        };
-        
-        const updateProgress = (percentage, message) => {
-            const progressSection = document.getElementById('progressSection');
+        function log(msg) {
+            const logWin = document.getElementById('logWindow');
+            const time = new Date().toLocaleTimeString();
+            logWin.innerHTML += `<br>[${time}] ${msg}`;
+            logWin.scrollTop = logWin.scrollHeight;
+        }
+
+        async function triggerBuild() {
+            const promptText = document.getElementById('promptInput').value.trim();
+            if (!promptText) return;
+
+            const genBtn = document.getElementById('genBtn');
+            const progressCard = document.getElementById('progressCard');
             const progressFill = document.getElementById('progressFill');
+            const progressPercent = document.getElementById('progressPercent');
             const progressMessage = document.getElementById('progressMessage');
-            const progressLabel = document.getElementById('progressLabel');
-            
-            progressSection.classList.add('active');
-            progressFill.style.width = percentage + '%';
-            progressMessage.textContent = message;
-            progressLabel.textContent = `Progress: ${percentage}%`;
-            
-            log(`[${percentage}%] ${message}`);
-        };
-        
-        const injectBundleToViewport = (htmlContent) => {
-            const container = document.getElementById('canvasContainer');
-            container.innerHTML = '';
-            
-            // Create blob URL for the HTML content
-            const blob = new Blob([htmlContent], { type: 'text/html' });
-            const blobUrl = URL.createObjectURL(blob);
-            
-            // Use iframe for sandboxing or direct injection for fast rendering
-            // Direct injection for ultra-fast rendering (no iframe reload lag)
+            const engineStatus = document.getElementById('engineStatus');
+            const viewportFrame = document.getElementById('viewportFrame');
+            const viewportTarget = document.getElementById('viewportTarget');
+
+            genBtn.disabled = true;
+            progressCard.classList.add('active');
+            progressFill.style.width = '10%';
+            progressPercent.innerText = '10%';
+            progressMessage.innerText = 'Dispatching to Orchestrator...';
+            engineStatus.innerText = 'Building';
+            engineStatus.style.color = '#ffaa00';
+            log('Starting real-time generation stream...');
+
             try {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(htmlContent, 'text/html');
-                
-                // Extract body content
-                const bodyContent = doc.body;
-                container.innerHTML = bodyContent.innerHTML;
-                
-                // Re-execute scripts (critical for Three.js initialization)
-                const scripts = bodyContent.querySelectorAll('script');
-                scripts.forEach((oldScript, idx) => {
-                    const newScript = document.createElement('script');
-                    newScript.textContent = oldScript.textContent;
-                    
-                    // Copy attributes
-                    Array.from(oldScript.attributes).forEach(attr => {
-                        if (attr.name !== 'src') {
-                            newScript.setAttribute(attr.name, attr.value);
-                        }
-                    });
-                    
-                    container.appendChild(newScript);
-                });
-                
-                // Copy styles from injected head
-                const styles = doc.querySelectorAll('style');
-                const headContainer = document.head;
-                styles.forEach(style => {
-                    const newStyle = document.createElement('style');
-                    newStyle.textContent = style.textContent;
-                    headContainer.appendChild(newStyle);
-                });
-                
-                log('Bundle injected and rendered in viewport', 'success');
-            } catch (e) {
-                log(`Failed to parse HTML: ${e.message}`, 'error');
-                container.innerHTML = `<div style="color:red;padding:20px;">Rendering error: ${e.message}</div>`;
-            }
-        };
-        
-        const generateGame = async () => {
-            const prompt = document.getElementById('promptInput').value.trim();
-            if (!prompt) {
-                updateStatus('Please enter a prompt', 'error');
-                return;
-            }
-            
-            const generateBtn = document.getElementById('generateBtn');
-            generateBtn.disabled = true;
-            log('Generating game from prompt...', 'info');
-            
-            try {
-                // Step 1: POST to /api/v2/generate/game to get task_id
-                const initResponse = await fetch('/api/v2/generate/game', {
+                const response = await fetch('/api/v2/generate/game', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt })
+                    body: JSON.stringify({ prompt: promptText })
                 });
-                
-                if (!initResponse.ok) {
-                    throw new Error(`Generation request failed: ${initResponse.statusText}`);
-                }
-                
-                const initData = await initResponse.json();
-                const taskId = initData.task_id;
-                log(`Task created: ${taskId}`, 'info');
-                log(`Streaming from: ${initData.stream_url}`, 'info');
-                updateStatus(`Task: ${taskId.substring(0, 12)}...`, 'info');
-                
-                // Step 2: Open EventSource to /api/v2/stream/pipeline/{task_id}
-                const eventSource = new EventSource(initData.stream_url);
-                let finalBuild = null;
-                const startTime = Date.now();
-                
-                eventSource.onmessage = (event) => {
-                    const data = JSON.parse(event.data);
-                    
-                    switch (data.type) {
-                        case 'progress':
-                            updateProgress(data.percentage, data.message);
-                            break;
-                        
-                        case 'complete':
-                            if (data.status === 'SUCCESS') {
-                                finalBuild = data.result.final_build;
-                                const elapsed = (data.result.elapsed_seconds || 0).toFixed(2);
-                                const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+
+                if (!response.ok) throw new Error('Generation endpoint error: ' + response.statusText);
+
+                const data = await response.json();
+                const taskId = data.task_id;
+                log('Task ID assigned: ' + taskId.substring(0, 10) + '...');
+
+                const eventSource = new EventSource('/api/v2/stream/pipeline/' + taskId);
+
+                eventSource.onmessage = function(event) {
+                    try {
+                        const payload = JSON.parse(event.data);
+
+                        if (payload.type === 'progress') {
+                            progressFill.style.width = payload.percentage + '%';
+                            progressPercent.innerText = payload.percentage + '%';
+                            progressMessage.innerText = payload.message;
+                            log(payload.message);
+                        } 
+                        else if (payload.type === 'complete') {
+                            progressFill.style.width = '100%';
+                            progressPercent.innerText = '100%';
+                            progressMessage.innerText = 'Build Assembled!';
+                            engineStatus.innerText = 'Live';
+                            engineStatus.style.color = '#00ffaa';
+                            log('Build completed. Injecting into 3D Viewport...');
+
+                            eventSource.close();
+                            genBtn.disabled = false;
+
+                            if (payload.result && payload.result.final_build) {
+                                viewportFrame.srcdoc = payload.result.final_build;
                                 
-                                log(`✓ Generation complete in ${elapsed}s (total: ${totalTime}s)`, 'success');
-                                updateStatus(`Success! Rendering to viewport...`, 'info');
-                                
-                                // Step 3: Inject bundle directly to viewport
+                                // Auto scroll to game window smoothly
                                 setTimeout(() => {
-                                    injectBundleToViewport(finalBuild);
-                                    updateProgress(100, 'Viewport rendering complete');
-                                    updateStatus(`Ready to interact!`, 'info');
-                                }, 100);
-                            } else {
-                                log(`Generation failed: ${data.result?.error || 'unknown error'}`, 'error');
-                                updateStatus('Generation failed', 'error');
+                                    viewportTarget.scrollIntoView({ behavior: 'smooth' });
+                                }, 250);
                             }
+                        } 
+                        else if (payload.type === 'error') {
+                            progressMessage.innerText = 'Build Error';
+                            engineStatus.innerText = 'Failed';
+                            engineStatus.style.color = '#ff4444';
+                            log('Error: ' + payload.error);
                             eventSource.close();
-                            generateBtn.disabled = false;
-                            break;
-                        
-                        case 'error':
-                            log(`Error: ${data.error}`, 'error');
-                            updateStatus('Pipeline error', 'error');
-                            eventSource.close();
-                            generateBtn.disabled = false;
-                            break;
-                        
-                        case 'timeout':
-                            log('Stream timeout', 'error');
-                            updateStatus('Stream timeout', 'error');
-                            eventSource.close();
-                            generateBtn.disabled = false;
-                            break;
-                    }
+                            genBtn.disabled = false;
+                        }
+                    } catch(err) {}
                 };
-                
-                eventSource.onerror = (e) => {
-                    log('Connection error', 'error');
-                    updateStatus('Connection lost', 'error');
+
+                eventSource.onerror = function() {
                     eventSource.close();
-                    generateBtn.disabled = false;
+                    genBtn.disabled = false;
                 };
-            } catch (error) {
-                log(`Error: ${error.message}`, 'error');
-                updateStatus(`Error: ${error.message}`, 'error');
-                generateBtn.disabled = false;
+
+            } catch (err) {
+                log('Network error: ' + err.message);
+                engineStatus.innerText = 'Error';
+                engineStatus.style.color = '#ff4444';
+                genBtn.disabled = false;
             }
-        };
-        
-        const clearGame = () => {
-            const container = document.getElementById('canvasContainer');
-            container.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100%; color:#666; font-size:18px;">Viewport cleared</div>';
-            document.getElementById('progressSection').classList.remove('active');
-            document.getElementById('statusSection').classList.remove('active');
-            log('Viewport cleared', 'info');
-        };
-        
-        // Initialize
-        log('Rio Ultra-Fast Pipeline initialized', 'success');
+        }
     </script>
 </body>
-</html>
+    </html>
+    
