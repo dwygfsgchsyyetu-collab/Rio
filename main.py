@@ -10,7 +10,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Core FastAPI imports (required)
+# ============================================================================
+# ENSURE REQUIRED DIRECTORIES EXIST
+# ============================================================================
+
+def ensure_directories():
+    """Create required directories at startup."""
+    directories = ['static', 'exports']
+    for dir_name in directories:
+        try:
+            os.makedirs(dir_name, exist_ok=True)
+            logger.info(f"Directory ensured: {dir_name}")
+        except Exception as e:
+            logger.warning(f"Could not create directory {dir_name}: {e}")
+
+
+# ============================================================================
+# CORE FASTAPI IMPORTS (REQUIRED)
+# ============================================================================
+
 try:
     from fastapi import FastAPI, Request, HTTPException
     from fastapi.responses import JSONResponse, StreamingResponse
@@ -41,6 +59,12 @@ try:
 except ImportError:
     logger.warning("StaticFiles not available, static serving disabled")
     STATIC_MOUNT_AVAILABLE = False
+
+# ============================================================================
+# ENSURE DIRECTORIES BEFORE APP INITIALIZATION
+# ============================================================================
+
+ensure_directories()
 
 # Initialize FastAPI app at module level (required for Gunicorn/Uvicorn)
 app = FastAPI(
@@ -318,7 +342,7 @@ async def execute_direct(req: Request):
 
 
 # ============================================================================
-# STATIC FILES MOUNTING (optional)
+# STATIC FILES MOUNTING (OPTIONAL)
 # ============================================================================
 
 if STATIC_MOUNT_AVAILABLE:

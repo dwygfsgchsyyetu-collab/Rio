@@ -41,7 +41,17 @@ async def create_threejs_build(html_source: str, game_id: str, cpp_source: Optio
                     import shutil
                     shutil.copy(shim_src, export_dir / shim_name)
                     # inject simple loader to initialize module
-                    loader = f"\n<script src=\"{shim_name}\"></script>\n<script>/* Emscripten module loads as GameModule() */\nif(typeof GameModule !== 'undefined'){\n  GameModule().then(function(mod){ console.log('Wasm module loaded:', mod); window.WasmModule = mod; });\n}\n</script>"
+                    loader = (
+                        f"\n<script src=\"{shim_name}\"></script>\n"
+                        f"<script>/* Emscripten module loads as GameModule() */\n"
+                        f"if(typeof GameModule !== 'undefined'){{{\n"
+                        f"  GameModule().then(function(mod){{{\n"
+                        f"    console.log('Wasm module loaded:', mod);\n"
+                        f"    window.WasmModule = mod;\n"
+                        f"  }});\n"
+                        f"}}\n"
+                        f"</script>"
+                    )
                     # Place loader before closing body
                     if '</body>' in injected_html.lower():
                         injected_html = injected_html.replace('</body>', loader + '\n</body>')
@@ -70,4 +80,9 @@ async def create_threejs_build(html_source: str, game_id: str, cpp_source: Optio
             if p.name != 'index.html':
                 zf.write(p, arcname=p.name)
 
-    return {'index_path': str(index_path), 'zip_path': str(zip_path), 'download_url': f'/exports/{game_id}.zip', 'compile_info': compile_info}
+    return {
+        'index_path': str(index_path),
+        'zip_path': str(zip_path),
+        'download_url': f'/exports/{game_id}.zip',
+        'compile_info': compile_info
+    }
