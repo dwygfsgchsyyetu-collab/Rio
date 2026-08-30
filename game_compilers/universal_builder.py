@@ -127,3 +127,8 @@ async def create_threejs_build(
         'file_size_kb': round(index_path.stat().st_size / 1024, 2)
         }
                                                          
+class UniversalBuilder:
+    async def create_threejs_build(self, *args, **kwargs):
+        return await create_threejs_build(*args, **kwargs)
+
+game_builder = UniversalBuilder()
