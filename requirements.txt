@@ -1,9 +1,20 @@
-fastapi
-uvicorn[standard]
-httpx
-cryptography
-python-multipart
-aiofiles
-pydantic
-websockets
-python-dotenv
+# Rio Ultra-Fast Game Pipeline - Production Dependencies
+# Python 3.10+
+
+# Core web framework
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+pydantic>=2.0.0
+
+# AI/ML integrations
+google-generativeai>=0.5.0
+
+# Async HTTP clients
+aiohttp>=3.8.0
+httpx>=0.24.0
+
+# HTTP utilities
+requests>=2.28.0
+
+# Optional: for advanced async features
+python-multipart>=0.0.5

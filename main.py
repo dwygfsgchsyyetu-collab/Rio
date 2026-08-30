@@ -1,19 +1,53 @@
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-import uuid
-import asyncio
+import os
+import sys
 import logging
-import json
 from typing import Optional, AsyncGenerator
 
-from god_brain.orchestrator import generate_game_and_export
-
-logging.basicConfig(level=logging.INFO)
+# Configure logging early
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+# Core FastAPI imports (required)
+try:
+    from fastapi import FastAPI, Request, HTTPException
+    from fastapi.responses import JSONResponse, StreamingResponse
+    from pydantic import BaseModel
+    import uvicorn
+except ImportError as e:
+    logger.error(f"Critical import failed: {e}. Please install fastapi, pydantic, and uvicorn.")
+    sys.exit(1)
+
+# Standard library imports
+import uuid
+import asyncio
+import json
+
+# Local module imports with safe fallback
+try:
+    from god_brain.orchestrator import generate_game_and_export
+    ORCHESTRATOR_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"Orchestrator import failed (non-critical): {e}")
+    ORCHESTRATOR_AVAILABLE = False
+    generate_game_and_export = None
+
+# Optional: Try to mount static files, but don't fail if directory doesn't exist
+try:
+    from fastapi.staticfiles import StaticFiles
+    STATIC_MOUNT_AVAILABLE = True
+except ImportError:
+    logger.warning("StaticFiles not available, static serving disabled")
+    STATIC_MOUNT_AVAILABLE = False
+
+# Initialize FastAPI app at module level (required for Gunicorn/Uvicorn)
+app = FastAPI(
+    title="Rio Ultra-Fast Pipeline",
+    description="Event-driven game generation with real-time SSE streaming",
+    version="2.0.0"
+)
 
 # Task store: map task_id -> {status, result, game_id, stream_queue, progress}
 TASK_STORE = {}
@@ -52,6 +86,15 @@ async def progress_callback_factory(task_id: str, stream_queue: asyncio.Queue):
 
 async def run_generation_background(prompt: str, game_id: str, task_id: str, stream_queue: asyncio.Queue):
     """Run generation in background and emit progress + final result to stream queue."""
+    if not ORCHESTRATOR_AVAILABLE or generate_game_and_export is None:
+        await stream_queue.put({
+            'type': 'error',
+            'error': 'Orchestrator not available. Check imports and dependencies.'
+        })
+        TASK_STORE[task_id]['status'] = 'FAILED'
+        TASK_STORE[task_id]['result'] = {'error': 'Orchestrator not available'}
+        return
+    
     try:
         progress_cb = await progress_callback_factory(task_id, stream_queue)
         result = await generate_game_and_export(prompt, game_id, progress_callback=progress_cb)
@@ -77,12 +120,53 @@ async def run_generation_background(prompt: str, game_id: str, task_id: str, str
         TASK_STORE[task_id]['result'] = {'error': str(e)}
 
 
+# ============================================================================
+# ROOT & HEALTH CHECK ENDPOINTS
+# ============================================================================
+
+@app.get("/")
+async def root():
+    """Root endpoint for deployment verification."""
+    return {
+        "status": "online",
+        "engine": "God Node V2",
+        "version": "2.0.0",
+        "orchestrator_available": ORCHESTRATOR_AVAILABLE
+    }
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring."""
+    return JSONResponse({
+        'status': 'healthy',
+        'service': 'Rio Ultra-Fast Pipeline',
+        'orchestrator': 'available' if ORCHESTRATOR_AVAILABLE else 'unavailable'
+    })
+
+
+@app.get('/api/v2/health')
+async def health_check_v2():
+    """Legacy health check endpoint (v2 API)."""
+    return JSONResponse({'status': 'healthy', 'service': 'Rio Ultra-Fast Pipeline'})
+
+
+# ============================================================================
+# GAME GENERATION ENDPOINTS
+# ============================================================================
+
 @app.post('/api/v2/generate/game')
 async def generate_game(req: GenerateRequest):
     """
     Initiate game generation and return task_id for polling/streaming.
     Client can call /api/v2/stream/pipeline/{task_id} to get real-time progress.
     """
+    if not ORCHESTRATOR_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Orchestrator not available. Check server logs."
+        )
+    
     task_id = 'task_' + uuid.uuid4().hex
     game_id = 'game_' + uuid.uuid4().hex
     
@@ -127,10 +211,15 @@ async def get_status(task_id: str):
     return JSONResponse(res)
 
 
+# ============================================================================
+# SERVER-SENT EVENTS (SSE) STREAMING
+# ============================================================================
+
 async def sse_event_generator(task_id: str) -> AsyncGenerator[str, None]:
     """
     Server-Sent Events generator for real-time progress streaming.
     Streams progress updates (0% -> 30% -> 70% -> 100%) until complete.
+    Uses native Python async generators (no third-party dependencies).
     """
     if task_id not in TASK_STORE:
         raise HTTPException(status_code=404, detail='task not found')
@@ -165,7 +254,7 @@ async def sse_event_generator(task_id: str) -> AsyncGenerator[str, None]:
                     yield f"data: {json.dumps({'type': 'timeout', 'message': 'Stream timeout'})}\n\n"
                     sent_complete = True
                 else:
-                    # Send keepalive comment
+                    # Send keepalive comment (prevents connection drops)
                     yield ": keepalive\n\n"
     except GeneratorExit:
         logger.info(f"Client disconnected from stream {task_id}")
@@ -178,6 +267,7 @@ async def sse_event_generator(task_id: str) -> AsyncGenerator[str, None]:
 async def stream_pipeline(task_id: str):
     """
     High-throughput Server-Sent Events endpoint for real-time pipeline progress.
+    Native FastAPI StreamingResponse with async generator (no third-party dependencies).
     
     Event flow:
     - { type: 'progress', percentage: 0, message: 'Initializing...' }
@@ -207,6 +297,12 @@ async def execute_direct(req: Request):
     Direct synchronous execution (blocking until complete).
     Useful for simple workflows; prefer streaming endpoint for production.
     """
+    if not ORCHESTRATOR_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Orchestrator not available. Check server logs."
+        )
+    
     body = await req.json()
     prompt = body.get('prompt')
     if not prompt:
@@ -221,19 +317,33 @@ async def execute_direct(req: Request):
         return JSONResponse({'status':'FAILED','result':{'error':str(e)}}, status_code=500)
 
 
-# Serve static frontend (index.html, assets)
-try:
-    app.mount('/static', StaticFiles(directory='static'), name='static')
-except Exception as e:
-    logger.warning(f"Could not mount static files: {e}")
+# ============================================================================
+# STATIC FILES MOUNTING (optional)
+# ============================================================================
+
+if STATIC_MOUNT_AVAILABLE:
+    try:
+        app.mount('/static', StaticFiles(directory='static'), name='static')
+        logger.info("Static files mounted at /static")
+    except Exception as e:
+        logger.warning(f"Could not mount static files: {e}")
 
 
-@app.get('/api/v2/health')
-async def health_check():
-    """Health check endpoint."""
-    return JSONResponse({'status': 'healthy', 'service': 'Rio Ultra-Fast Pipeline'})
-
+# ============================================================================
+# ENTRYPOINT
+# ============================================================================
 
 if __name__ == '__main__':
-    import uvicorn
-    uvicorn.run(app, host='0.0.0.0', port=8000, log_level='info')
+    # Get port from environment variable (Render/Docker/Railway support)
+    port = int(os.environ.get('PORT', 8000))
+    host = os.environ.get('HOST', '0.0.0.0')
+    
+    logger.info(f"Starting Rio Ultra-Fast Pipeline on {host}:{port}")
+    logger.info(f"Orchestrator available: {ORCHESTRATOR_AVAILABLE}")
+    
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        log_level='info'
+    )

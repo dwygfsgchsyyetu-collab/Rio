@@ -3,20 +3,45 @@ import re
 import time
 import asyncio
 import logging
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 import hashlib
 
-from .api_nexus import GeminiAdapter
-from game_compilers.universal_builder import create_threejs_build
-
 logger = logging.getLogger("god_brain.orchestrator")
+
+# ============================================================================
+# SAFE IMPORTS WITH FALLBACK
+# ============================================================================
+
+try:
+    from .api_nexus import GeminiAdapter
+    ADAPTER_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"GeminiAdapter import failed: {e}")
+    ADAPTER_AVAILABLE = False
+    GeminiAdapter = None
+
+try:
+    from game_compilers.universal_builder import create_threejs_build
+    BUILDER_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"Universal builder import failed: {e}")
+    BUILDER_AVAILABLE = False
+    create_threejs_build = None
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
 # Export path base
 EXPORTS_ROOT = Path(os.environ.get('EXPORTS_ROOT', 'exports'))
-EXPORTS_ROOT.mkdir(parents=True, exist_ok=True)
+try:
+    EXPORTS_ROOT.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    logger.warning(f"Could not create exports directory: {e}")
 
 THREE_R128 = '<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>'
 
@@ -52,7 +77,10 @@ window.addEventListener('resize', ()=>{ camera.aspect = window.innerWidth/window
 </body></html>'''
 
 
-# Progress event callbacks
+# ============================================================================
+# PROGRESS TRACKING
+# ============================================================================
+
 _progress_callbacks: Dict[str, list] = {}
 
 
@@ -70,6 +98,10 @@ async def emit_progress(task_id: str, percentage: int, message: str):
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
+
+# ============================================================================
+# CACHING & TEXT PROCESSING
+# ============================================================================
 
 def _get_boilerplate_hash(html: str) -> str:
     """Generate a hash for boilerplate caching."""
@@ -95,6 +127,7 @@ def _strip_markdown_and_quotes(text: str) -> str:
 
 
 def _extract_html_candidate(text: str) -> str:
+    """Extract HTML content from raw text."""
     if not text:
         return ''
     clean = _strip_markdown_and_quotes(text)
@@ -111,6 +144,7 @@ def _extract_html_candidate(text: str) -> str:
 
 @lru_cache(maxsize=64)
 def ensure_threejs_and_doctype(html: str) -> str:
+    """Ensure HTML has proper doctype and Three.js library."""
     if not html:
         return ''
     if re.search(r'(?i)<!doctype\s+html>', html):
@@ -134,11 +168,22 @@ def ensure_threejs_and_doctype(html: str) -> str:
     return wrapped
 
 
+# ============================================================================
+# ORCHESTRATOR CLASS
+# ============================================================================
+
 class Orchestrator:
+    """Manages the game generation pipeline with concurrent execution."""
+    
     def __init__(self, thread_pool_size: int = 4):
-        self.adapter = GeminiAdapter()
+        self.adapter = GeminiAdapter() if ADAPTER_AVAILABLE else None
         self.thread_pool = ThreadPoolExecutor(max_workers=thread_pool_size)
         self.task_timings: Dict[str, float] = {}
+        
+        if not ADAPTER_AVAILABLE:
+            logger.error("GeminiAdapter not available - generation will fail")
+        if not BUILDER_AVAILABLE:
+            logger.error("Build system not available - generation will fail")
 
     async def orchestrate_generation(self, prompt: str, game_id: str, timeout_seconds: int = 15,
                                      progress_callback: Optional[Callable[[int, str], Coroutine[Any, Any, None]]] = None) -> Dict[str, Any]:
@@ -156,6 +201,14 @@ class Orchestrator:
         """
         start_time = time.time()
         task_start = start_time
+        
+        # Check dependencies
+        if not ADAPTER_AVAILABLE or not BUILDER_AVAILABLE:
+            await emit_progress(game_id, 0, "Error: Missing dependencies (adapter or builder)")
+            return {
+                'status': 'FAILED',
+                'result': {'error': 'Missing critical dependencies', 'elapsed_seconds': 0}
+            }
         
         # Register progress callback if provided
         if progress_callback:
@@ -218,10 +271,7 @@ class Orchestrator:
             await emit_progress(game_id, 70, "Building Three.js bundle...")
             
             # PHASE 5: Concurrent build tasks (70-100%)
-            # Run build and optional WASM compilation in parallel
             build_tasks = []
-            
-            # Primary build task
             build_task = asyncio.create_task(
                 create_threejs_build(final_html, game_id, cpp_source=cpp_source, compile_target='web')
             )
@@ -268,6 +318,10 @@ class Orchestrator:
                 'result': {'error': str(e), 'elapsed_seconds': elapsed}
             }
 
+
+# ============================================================================
+# MODULE-LEVEL ORCHESTRATOR INSTANCE
+# ============================================================================
 
 _default_orchestrator = Orchestrator()
 
