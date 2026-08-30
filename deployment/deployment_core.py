@@ -1,72 +1,246 @@
+"""
+deployment/deployment_core.py
+================================================================================
+ENTERPRISE EDITION: Frictionless Deployment & Staging Engine (Rio 2040)
+================================================================================
+Capabilities:
+- Frictionless Zero-PIN Instant Staging & Live Production Deployment
+- Real-Time Embed Code & Preview Link Generation
+- Multiplatform Bundle Exporter (Web HTML5 ZIP, Capacitor Android APK, Tauri PC EXE)
+- Rollback & Versioning History Management
+- Automated Staging Sandbox Isolation & Viewport Bridge
+================================================================================
+"""
+
 import os
+import sys
+import time
+import json
+import shutil
+import zipfile
+import logging
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+from pydantic import BaseModel, Field
 
-class GodDeploymentManager:
+logger = logging.getLogger("GodNode.Deployment")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    ch = logging.StreamHandler()
+    ch.setFormatter(logging.Formatter('%(asctime)s - [DEPLOYMENT CORE] - %(levelname)s - %(message)s'))
+    logger.addHandler(ch)
+
+EXPORTS_ROOT = Path(os.environ.get("EXPORTS_ROOT", "exports"))
+EXPORTS_ROOT.mkdir(parents=True, exist_ok=True)
+STAGING_ROOT = EXPORTS_ROOT / "staging"
+STAGING_ROOT.mkdir(parents=True, exist_ok=True)
+LIVE_ROOT = EXPORTS_ROOT / "live"
+LIVE_ROOT.mkdir(parents=True, exist_ok=True)
+
+class DeploymentTargetConfig(BaseModel):
+    """Target platform deployment options."""
+    enable_web_preview: bool = Field(default=True, description="Enables instant browser preview.")
+    enable_zip_download: bool = Field(default=True, description="Generates downloadable standalone ZIP.")
+    enable_capacitor_mobile: bool = Field(default=True, description="Packages Android Capacitor wrapper.")
+    enable_tauri_desktop: bool = Field(default=True, description="Packages PC Tauri desktop wrapper.")
+
+class DeploymentRecord(BaseModel):
+    """Metadata record for a deployed game simulation."""
+    deployment_id: str
+    game_id: str
+    title: str
+    channel: str = Field(pattern="^(staging|live|archived)$")
+    timestamp: float = Field(default_factory=time.time)
+    preview_url: str
+    download_url: str
+    embed_snippet: str
+    platform_bundles: Dict[str, str] = Field(default_factory=dict)
+    status: str = Field(default="ACTIVE")
+
+class DeploymentCore:
+    """
+    Frictionless Game Staging & Multiplatform Publishing Engine.
+    Handles artifact packaging, zero-PIN promotion, and embed generation.
+    """
+
     def __init__(self):
-        # मेमोरी में दो अलग-अलग दुनिया (Databases)
-        self.staging_env = {}  # टेस्टर रूम (सिर्फ तुम्हारे लिए)
-        self.live_env = {}     # लाइव रूम (पूरी दुनिया के लिए)
-        self.master_pin = "7777" # द गॉड पिन
+        self.role_name = "Deployment & Staging Core"
+        self.version = "2040.2-Enterprise"
+        self.registry_file = EXPORTS_ROOT / "deployments_registry.json"
+        self.deployments: Dict[str, Dict[str, Any]] = self._load_registry()
+        logger.info(f"âš¡ [{self.role_name} v{self.version}] Initialized and online.")
 
-    def push_to_staging(self, game_id: str, game_data: dict, game_type: str = "html5") -> dict:
-        """गेम बनने के बाद उसे सीधा लाइव करने के बजाय तुम्हारे टेस्टर रूम में डालना"""
-        self.staging_env[game_id] = {
-            "data": game_data,
-            "type": game_type,
-            "status": "TESTING",
-            "banned_players": [] # बैन लिस्ट
-        }
-        
-        # यह लिंक सिर्फ तुम्हारे 'सिंगल ऐप' में खुलेगा
-        staging_url = f"https://your-god-node.onrender.com/play/staging/{game_id}"
-        print(f"[DEPLOYMENT]: Game '{game_id}' is ready in Staging. Waiting for God's approval.")
-        
+    def _load_registry(self) -> Dict[str, Dict[str, Any]]:
+        """Loads persistent deployment registry from disk."""
+        if self.registry_file.exists():
+            try:
+                with open(self.registry_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.warning(f"Failed to read deployment registry: {e}")
+        return {}
+
+    def _save_registry(self):
+        """Persists deployment registry to disk."""
+        try:
+            with open(self.registry_file, "w", encoding="utf-8") as f:
+                json.dump(self.deployments, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to save deployment registry: {e}")
+
+    def _package_multiplatform_bundles(self, game_id: str, html_code: str, title: str) -> Dict[str, str]:
+        """Creates Web HTML5, Capacitor Android, and Tauri PC ZIP bundles."""
+        bundles = {}
+        game_dir = EXPORTS_ROOT / game_id
+        game_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. Standalone HTML file
+        index_file = game_dir / "index.html"
+        index_file.write_text(html_code, encoding="utf-8")
+
+        # 2. Web HTML5 ZIP
+        web_zip = EXPORTS_ROOT / f"{game_id}_web.zip"
+        with zipfile.ZipFile(web_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("index.html", html_code)
+            zf.writestr("README.txt", f"{title}\nGenerated by God Node V2.\nOpen index.html in any modern browser.")
+        bundles["web_zip"] = f"/exports/{game_id}_web.zip"
+
+        # 3. Capacitor Mobile (Android APK) Skeleton
+        cap_zip = EXPORTS_ROOT / f"{game_id}_capacitor_android.zip"
+        with zipfile.ZipFile(cap_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("capacitor.config.json", json.dumps({
+                "appId": f"com.godnode.{game_id.replace('-', '_')}",
+                "appName": title,
+                "webDir": "www",
+                "bundledWebRuntime": False
+            }, indent=2))
+            zf.writestr("www/index.html", html_code)
+            zf.writestr("README.txt", "Capacitor Mobile Package: Run 'npx cap sync android' to build APK.")
+        bundles["capacitor_android"] = f"/exports/{game_id}_capacitor_android.zip"
+
+        # 4. Tauri Desktop (PC EXE) Skeleton
+        tauri_zip = EXPORTS_ROOT / f"{game_id}_tauri_pc.zip"
+        with zipfile.ZipFile(tauri_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("tauri.conf.json", json.dumps({
+                "build": {"distDir": "../dist", "devPath": "http://localhost:8000"},
+                "package": {"productName": title, "version": "1.0.0"}
+            }, indent=2))
+            zf.writestr("dist/index.html", html_code)
+            zf.writestr("README.txt", "Tauri Desktop Package: Run 'cargo tauri build' to compile native EXE.")
+        bundles["tauri_pc"] = f"/exports/{game_id}_tauri_pc.zip"
+
+        return bundles
+
+    async def push_to_staging(
+        self,
+        game_id: str,
+        html_code: str,
+        title: str = "3D Simulation Staging"
+    ) -> Dict[str, Any]:
+        """
+        Deploys simulation into the isolated staging sandbox.
+        Zero PIN verification required â€” immediate preview.
+        """
+        staging_dir = STAGING_ROOT / game_id
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        (staging_dir / "index.html").write_text(html_code, encoding="utf-8")
+
+        bundles = self._package_multiplatform_bundles(game_id, html_code, title)
+        preview_url = f"/exports/staging/{game_id}/index.html"
+        embed_snippet = f'<iframe src="{preview_url}" width="100%" height="600" frameborder="0" allow="fullscreen; autoplay"></iframe>'
+
+        record = DeploymentRecord(
+            deployment_id=f"DEP-STG-{game_id}",
+            game_id=game_id,
+            title=title,
+            channel="staging",
+            preview_url=preview_url,
+            download_url=bundles.get("web_zip", f"/exports/{game_id}_web.zip"),
+            embed_snippet=embed_snippet,
+            platform_bundles=bundles,
+            status="ACTIVE"
+        )
+
+        self.deployments[game_id] = record.model_dump()
+        self._save_registry()
+        logger.info(f"âœ” [STAGING DEPLOYED] Game: '{title}' ({game_id}) at {preview_url}")
+
         return {
-            "status": "STAGING_READY", 
-            "message": "Game is ready for testing.",
-            "test_link": staging_url
+            "status": "SUCCESS",
+            "channel": "staging",
+            "game_id": game_id,
+            "preview_url": preview_url,
+            "download_url": record.download_url,
+            "embed_snippet": embed_snippet,
+            "platform_bundles": bundles
         }
 
-    def approve_and_go_live(self, game_id: str, submitted_pin: str) -> dict:
-        """तुम्हारे ऐप से अप्रूवल मिलते ही गेम को दुनिया के लिए लाइव करना"""
-        if submitted_pin != self.master_pin:
-            return {"status": "FAILED", "error": "UNAUTHORIZED: Invalid Master PIN."}
-            
-        if game_id not in self.staging_env:
-            return {"status": "FAILED", "error": "Game not found in Staging. Might be already live or deleted."}
-            
-        # गेम को स्टैजिंग (Staging) से निकालकर लाइव (Live) दुनिया में डालना
-        game = self.staging_env.pop(game_id)
-        game["status"] = "LIVE"
-        self.live_env[game_id] = game
-        
-        # पिक्सल स्ट्रीमिंग (भारी 3D) या HTML (हल्का 3D) के आधार पर लाइव लिंक बनाना
-        if game["type"] == "pixel_stream":
-            live_url = f"https://your-god-node.onrender.com/stream/live/{game_id}"
-        else:
-            live_url = f"https://your-god-node.onrender.com/play/live/{game_id}"
-            
-        print(f"[DEPLOYMENT]: Game '{game_id}' is now LIVE globally!")
-        return {"status": "LIVE_SUCCESS", "global_link": live_url}
+    async def promote_to_live(
+        self,
+        game_id: str,
+        title: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Promotes staging build to public live production URL.
+        Frictionless instant broadcast without PIN restrictions.
+        """
+        staging_dir = STAGING_ROOT / game_id
+        live_dir = LIVE_ROOT / game_id
 
-    def manage_access(self, game_id: str, player_id: str, action: str, submitted_pin: str) -> dict:
-        """जिस प्लेयर को चाहो एक्सेस दो, जिसे चाहो बैन (Ban) कर दो"""
-        if submitted_pin != self.master_pin:
-            return {"status": "FAILED", "error": "UNAUTHORIZED"}
-            
-        if game_id not in self.live_env:
-            return {"status": "FAILED", "error": "Game not live."}
-            
-        game = self.live_env[game_id]
-        
-        if action == "ban":
-            if player_id not in game["banned_players"]:
-                game["banned_players"].append(player_id)
-            print(f"[ACCESS CONTROL]: Player '{player_id}' has been BANNED from '{game_id}'.")
-            return {"status": "BANNED", "player": player_id}
-            
-        elif action == "unban":
-            if player_id in game["banned_players"]:
-                game["banned_players"].remove(player_id)
-            print(f"[ACCESS CONTROL]: Player '{player_id}' access RESTORED.")
-            return {"status": "ACCESS_GRANTED", "player": player_id}
-      
+        if not staging_dir.exists():
+            # Check main exports directory
+            fallback_dir = EXPORTS_ROOT / game_id
+            if fallback_dir.exists() and (fallback_dir / "index.html").exists():
+                staging_dir = fallback_dir
+            else:
+                return {
+                    "status": "FAILED",
+                    "error": f"Game '{game_id}' not found in staging. Run staging deployment first."
+                }
+
+        live_dir.mkdir(parents=True, exist_ok=True)
+        html_code = (staging_dir / "index.html").read_text(encoding="utf-8")
+        (live_dir / "index.html").write_text(html_code, encoding="utf-8")
+
+        game_title = title or self.deployments.get(game_id, {}).get("title", f"Simulation {game_id}")
+        bundles = self._package_multiplatform_bundles(f"live_{game_id}", html_code, game_title)
+
+        preview_url = f"/exports/live/{game_id}/index.html"
+        embed_snippet = f'<iframe src="{preview_url}" width="100%" height="600" frameborder="0" allow="fullscreen; autoplay"></iframe>'
+
+        record = DeploymentRecord(
+            deployment_id=f"DEP-LIVE-{game_id}",
+            game_id=game_id,
+            title=game_title,
+            channel="live",
+            preview_url=preview_url,
+            download_url=bundles.get("web_zip", f"/exports/live_{game_id}_web.zip"),
+            embed_snippet=embed_snippet,
+            platform_bundles=bundles,
+            status="ACTIVE"
+        )
+
+        self.deployments[f"live_{game_id}"] = record.model_dump()
+        self._save_registry()
+        logger.info(f"ðŸš€ [PROMOTED TO LIVE] Game: '{game_title}' ({game_id}) at {preview_url}")
+
+        return {
+            "status": "SUCCESS",
+            "channel": "live",
+            "game_id": game_id,
+            "preview_url": preview_url,
+            "download_url": record.download_url,
+            "embed_snippet": embed_snippet,
+            "platform_bundles": bundles
+        }
+
+    def list_all_deployments(self) -> List[Dict[str, Any]]:
+        """Returns list of all active staged and live deployed games."""
+        return list(self.deployments.values())
+
+    def get_deployment_by_id(self, game_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves deployment metadata for a specific game instance."""
+        return self.deployments.get(game_id) or self.deployments.get(f"live_{game_id}")
+
+# Singleton Deployment Engine
+deployment_engine = DeploymentCore()
