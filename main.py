@@ -1,6 +1,9 @@
 import os
 import sys
 import logging
+import uuid
+import asyncio
+import json
 from typing import Optional, AsyncGenerator
 
 # Configure logging early
@@ -31,17 +34,12 @@ def ensure_directories():
 
 try:
     from fastapi import FastAPI, Request, HTTPException
-    from fastapi.responses import JSONResponse, StreamingResponse
+    from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
     from pydantic import BaseModel
     import uvicorn
 except ImportError as e:
     logger.error(f"Critical import failed: {e}. Please install fastapi, pydantic, and uvicorn.")
     sys.exit(1)
-
-# Standard library imports
-import uuid
-import asyncio
-import json
 
 # Local module imports with safe fallback
 try:
@@ -52,7 +50,7 @@ except Exception as e:
     ORCHESTRATOR_AVAILABLE = False
     generate_game_and_export = None
 
-# Optional: Try to mount static files, but don't fail if directory doesn't exist
+# Optional: Try to mount static files
 try:
     from fastapi.staticfiles import StaticFiles
     STATIC_MOUNT_AVAILABLE = True
@@ -66,7 +64,7 @@ except ImportError:
 
 ensure_directories()
 
-# Initialize FastAPI app at module level (required for Gunicorn/Uvicorn)
+# Initialize FastAPI app at module level
 app = FastAPI(
     title="Rio Ultra-Fast Pipeline",
     description="Event-driven game generation with real-time SSE streaming",
@@ -75,7 +73,7 @@ app = FastAPI(
 
 # Task store: map task_id -> {status, result, game_id, stream_queue, progress}
 TASK_STORE = {}
-TASK_LOCKS = {}  # Per-task async locks to prevent race conditions
+TASK_LOCKS = {}
 
 
 class GenerateRequest(BaseModel):
@@ -150,13 +148,18 @@ async def run_generation_background(prompt: str, game_id: str, task_id: str, str
 
 @app.get("/")
 async def root():
-    """Root endpoint for deployment verification."""
-    return {
+    """Serve the main Web UI (index.html)."""
+    if os.path.exists("index.html"):
+        return FileResponse("index.html")
+    elif os.path.exists("static/index.html"):
+        return FileResponse("static/index.html")
+    return JSONResponse({
         "status": "online",
         "engine": "God Node V2",
         "version": "2.0.0",
-        "orchestrator_available": ORCHESTRATOR_AVAILABLE
-    }
+        "orchestrator_available": ORCHESTRATOR_AVAILABLE,
+        "message": "index.html not found in root or static directory"
+    })
 
 
 @app.get("/health")
@@ -183,7 +186,6 @@ async def health_check_v2():
 async def generate_game(req: GenerateRequest):
     """
     Initiate game generation and return task_id for polling/streaming.
-    Client can call /api/v2/stream/pipeline/{task_id} to get real-time progress.
     """
     if not ORCHESTRATOR_AVAILABLE:
         raise HTTPException(
@@ -203,7 +205,7 @@ async def generate_game(req: GenerateRequest):
         'progress': StreamProgress()
     }
     
-    # Launch background generation task (fire and forget)
+    # Launch background generation task
     asyncio.create_task(
         run_generation_background(
             req.prompt,
@@ -224,7 +226,7 @@ async def generate_game(req: GenerateRequest):
 
 @app.get('/api/v2/status/{task_id}')
 async def get_status(task_id: str):
-    """Poll current task status (used by clients that don't support SSE)."""
+    """Poll current task status."""
     if task_id not in TASK_STORE:
         raise HTTPException(status_code=404, detail='task not found')
     
@@ -240,45 +242,35 @@ async def get_status(task_id: str):
 # ============================================================================
 
 async def sse_event_generator(task_id: str) -> AsyncGenerator[str, None]:
-    """
-    Server-Sent Events generator for real-time progress streaming.
-    Streams progress updates (0% -> 30% -> 70% -> 100%) until complete.
-    Uses native Python async generators (no third-party dependencies).
-    """
+    """Server-Sent Events generator for real-time progress streaming."""
     if task_id not in TASK_STORE:
         raise HTTPException(status_code=404, detail='task not found')
     
     stream_queue = TASK_STORE[task_id]['stream_queue']
     sent_complete = False
     start_time = asyncio.get_event_loop().time()
-    timeout = 120  # 2 minute timeout per stream
+    timeout = 120
     
     try:
         while not sent_complete:
             try:
-                # Wait for event with timeout
                 event = await asyncio.wait_for(stream_queue.get(), timeout=2.0)
                 
                 if event['type'] == 'progress':
-                    # Progress event
                     yield f"data: {json.dumps(event)}\n\n"
                 elif event['type'] == 'complete':
-                    # Completion event with final bundle
                     yield f"data: {json.dumps(event)}\n\n"
                     sent_complete = True
                 elif event['type'] == 'error':
-                    # Error event
                     yield f"data: {json.dumps(event)}\n\n"
                     sent_complete = True
             except asyncio.TimeoutError:
-                # Check if task is still alive or send keepalive
                 elapsed = asyncio.get_event_loop().time() - start_time
                 if elapsed > timeout:
                     logger.warning(f"Stream timeout for {task_id}")
                     yield f"data: {json.dumps({'type': 'timeout', 'message': 'Stream timeout'})}\n\n"
                     sent_complete = True
                 else:
-                    # Send keepalive comment (prevents connection drops)
                     yield ": keepalive\n\n"
     except GeneratorExit:
         logger.info(f"Client disconnected from stream {task_id}")
@@ -289,18 +281,7 @@ async def sse_event_generator(task_id: str) -> AsyncGenerator[str, None]:
 
 @app.get('/api/v2/stream/pipeline/{task_id}')
 async def stream_pipeline(task_id: str):
-    """
-    High-throughput Server-Sent Events endpoint for real-time pipeline progress.
-    Native FastAPI StreamingResponse with async generator (no third-party dependencies).
-    
-    Event flow:
-    - { type: 'progress', percentage: 0, message: 'Initializing...' }
-    - { type: 'progress', percentage: 30, message: 'Parsing prompt...' }
-    - { type: 'progress', percentage: 70, message: 'Compiling...' }
-    - { type: 'complete', status: 'SUCCESS', result: { final_build, download_url, elapsed_seconds } }
-    
-    Client receives bundle HTML directly in 'result.final_build' for immediate viewport injection.
-    """
+    """High-throughput Server-Sent Events endpoint."""
     if task_id not in TASK_STORE:
         raise HTTPException(status_code=404, detail='task not found')
     
@@ -317,10 +298,7 @@ async def stream_pipeline(task_id: str):
 
 @app.post('/api/v2/execute')
 async def execute_direct(req: Request):
-    """
-    Direct synchronous execution (blocking until complete).
-    Useful for simple workflows; prefer streaming endpoint for production.
-    """
+    """Direct synchronous execution."""
     if not ORCHESTRATOR_AVAILABLE:
         raise HTTPException(
             status_code=503,
@@ -342,13 +320,14 @@ async def execute_direct(req: Request):
 
 
 # ============================================================================
-# STATIC FILES MOUNTING (OPTIONAL)
+# STATIC FILES MOUNTING
 # ============================================================================
 
 if STATIC_MOUNT_AVAILABLE:
     try:
         app.mount('/static', StaticFiles(directory='static'), name='static')
-        logger.info("Static files mounted at /static")
+        app.mount('/exports', StaticFiles(directory='exports'), name='exports')
+        logger.info("Static and Exports mounted")
     except Exception as e:
         logger.warning(f"Could not mount static files: {e}")
 
@@ -358,7 +337,6 @@ if STATIC_MOUNT_AVAILABLE:
 # ============================================================================
 
 if __name__ == '__main__':
-    # Get port from environment variable (Render/Docker/Railway support)
     port = int(os.environ.get('PORT', 8000))
     host = os.environ.get('HOST', '0.0.0.0')
     
@@ -370,4 +348,5 @@ if __name__ == '__main__':
         host=host,
         port=port,
         log_level='info'
-    )
+)
+            
