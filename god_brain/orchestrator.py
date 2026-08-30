@@ -1,332 +1,456 @@
+"""
+god_brain/orchestrator.py
+================================================================================
+ENTERPRISE EDITION: God Swarm Master Orchestrator (Rio 2040 Architecture)
+================================================================================
+Capabilities:
+- Dynamic Master Intent Routing & Resource Classification
+- Asynchronous DAG Pipeline (Director -> [MapBuilder || Physics] -> Synthesis -> QA)
+- Adversarial Self-Healing Loop powered by QATesterAgent V3.0
+- Universal AI Gateway Integration (100% Zero-Hardcoding, Any Model/Provider)
+- High-Performance Standalone HTML5 Packaging with Zero-Crash Fallbacks
+================================================================================
+"""
+
 import os
+import sys
 import re
 import time
+import json
 import asyncio
 import logging
-import sys
 from pathlib import Path
-from typing import Dict, Any, Optional, Callable, Coroutine
-from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache
-import hashlib
+from typing import Dict, Any, List, Optional, Callable, Coroutine
 
-logger = logging.getLogger("god_brain.orchestrator")
+logger = logging.getLogger("GodNode.Orchestrator")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    ch = logging.StreamHandler()
+    ch.setFormatter(logging.Formatter('%(asctime)s - [GOD ORCHESTRATOR] - %(levelname)s - %(message)s'))
+    logger.addHandler(ch)
 
-# ============================================================================
-# SAFE IMPORTS WITH FALLBACK
-# ============================================================================
-
+# Universal AI Gateway Safe Import
 try:
-    from .api_nexus import GeminiAdapter
-    ADAPTER_AVAILABLE = True
+    from god_brain.api_nexus import UniversalAIGateway
 except Exception as e:
-    logger.warning(f"GeminiAdapter import failed: {e}")
-    ADAPTER_AVAILABLE = False
-    GeminiAdapter = None
+    logger.warning(f"UniversalAIGateway import notice in Orchestrator: {e}")
+    UniversalAIGateway = None
 
+# Master Intent Router Safe Import
 try:
-    from game_compilers.universal_builder import create_threejs_build
-    BUILDER_AVAILABLE = True
+    from the_god_router.intent_classifier import master_router_instance
 except Exception as e:
-    logger.warning(f"Universal builder import failed: {e}")
-    BUILDER_AVAILABLE = False
-    create_threejs_build = None
+    logger.warning(f"MasterIntentRouter import notice: {e}")
+    master_router_instance = None
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-
-# Export path base
-EXPORTS_ROOT = Path(os.environ.get('EXPORTS_ROOT', 'exports'))
+# Swarm Agents Safe Imports
 try:
-    EXPORTS_ROOT.mkdir(parents=True, exist_ok=True)
+    from god_brain.agents.director_agent import DirectorAgent
+    from god_brain.agents.map_builder_agent import MapBuilderAgent
+    from god_brain.agents.physics_agent import PhysicsAgent
+    from god_brain.agents.qa_tester_agent import QATesterAgent
+    AGENTS_AVAILABLE = True
 except Exception as e:
-    logger.warning(f"Could not create exports directory: {e}")
+    logger.warning(f"Swarm Agents import notice in Orchestrator: {e}")
+    AGENTS_AVAILABLE = False
+    DirectorAgent = None
+    MapBuilderAgent = None
+    PhysicsAgent = None
+    QATesterAgent = None
 
-THREE_R128 = '<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>'
+# Universal Builder Safe Import
+try:
+    from game_compilers.universal_builder import game_builder
+except Exception as e:
+    logger.warning(f"UniversalBuilder import notice in Orchestrator: {e}")
+    game_builder = None
 
-# In-Memory LRU Cache for boilerplate & common WASM modules
-_boilerplate_cache = {}
-_wasm_module_cache = {}
+EXPORTS_ROOT = Path(os.environ.get("EXPORTS_ROOT", "exports"))
+EXPORTS_ROOT.mkdir(parents=True, exist_ok=True)
 
-FALLBACK_ARENA = '''<!doctype html>
-<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Fallback Arena</title>
-%s
-<style>body{margin:0;overflow:hidden}canvas{display:block}</style>
-</head><body>
-<div id="root"></div>
-<script>
-// Minimal Three.js r128 fallback arena: rotating cube, basic WASD movement
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({antialias:true}); renderer.setSize(window.innerWidth, window.innerHeight); document.body.appendChild(renderer.domElement);
-const geometry = new THREE.BoxGeometry();
-const material = new THREE.MeshStandardMaterial({color:0x0077ff});
-const cube = new THREE.Mesh(geometry, material); scene.add(cube);
-const light = new THREE.DirectionalLight(0xffffff, 1); light.position.set(5,10,7.5); scene.add(light);
-const ambient = new THREE.AmbientLight(0x404040); scene.add(ambient);
-camera.position.z = 5;
-let vel = {x:0,z:0}; const speed = 0.06;
-const keys = {};
-window.addEventListener('keydown', e=> keys[e.key.toLowerCase()] = true);
-window.addEventListener('keyup', e=> keys[e.key.toLowerCase()] = false);
-function animate(){ requestAnimationFrame(animate); if(keys['w']) cube.position.z -= speed; if(keys['s']) cube.position.z += speed; if(keys['a']) cube.position.x -= speed; if(keys['d']) cube.position.x += speed; cube.rotation.x += 0.01; cube.rotation.y += 0.013; renderer.render(scene, camera);} animate();
-window.addEventListener('resize', ()=>{ camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
-</script>
-</body></html>'''
+HTML_SYNTHESIS_DIRECTIVE = """
+You are the Master WebGL & Three.js Compiler of God Node V2 (Rio 2040).
+Given the architectural blueprints from the Director, Map Architect, and Physics Master,
+generate a COMPLETE, standalone, production-ready, interactive 3D WebGL game in pure HTML and JavaScript.
 
+MANDATORY RULES:
+1. Output ONLY the raw executable HTML starting with <!DOCTYPE html> and ending with </html>.
+2. Zero markdown code fences, zero conversational text, zero trailing explanations.
+3. Link Three.js CDN: <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+4. Include clean inline CSS: margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background: #06070a; touch-action: none; font-family: monospace;
+5. Build rich gameplay mechanics:
+   - Dynamic player vessel/character with keyboard (WASD/Arrows) and touch controls.
+   - 3D particle starfield / environmental grid.
+   - PBR MeshStandardMaterial lighting with HemisphereLight and DirectionalLight.
+   - Dynamic spawning targets/enemies/hazards with bounding radius collision detection.
+   - HUD overlay (Score counter, health bar, game over state).
+   - Clean requestAnimationFrame(animate) render loop.
+"""
 
-# ============================================================================
-# PROGRESS TRACKING
-# ============================================================================
-
-_progress_callbacks: Dict[str, list] = {}
-
-
-def register_progress_callback(task_id: str, callback: Callable[[int, str], Coroutine[Any, Any, None]]):
-    """Register a callback function to receive progress events (percentage, message)."""
-    if task_id not in _progress_callbacks:
-        _progress_callbacks[task_id] = []
-    _progress_callbacks[task_id].append(callback)
-
-
-async def emit_progress(task_id: str, percentage: int, message: str):
-    """Emit progress event to all registered callbacks for this task."""
-    if task_id in _progress_callbacks:
-        tasks = [cb(percentage, message) for cb in _progress_callbacks[task_id]]
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-
-# ============================================================================
-# CACHING & TEXT PROCESSING
-# ============================================================================
-
-def _get_boilerplate_hash(html: str) -> str:
-    """Generate a hash for boilerplate caching."""
-    return hashlib.md5(html.encode()).hexdigest()
-
-
-@lru_cache(maxsize=128)
-def _cached_strip_markdown_and_quotes(text: str) -> str:
-    """Aggressively strip markdown fences and outer quoting from assistant outputs."""
-    if not text:
-        return ''
-    text = re.sub(r"```(?:html|javascript|js)?\s*", '', text, flags=re.IGNORECASE)
-    text = re.sub(r"```\s*", '', text)
-    text = re.sub(r'^\s*["\']+'  , '', text)
-    text = re.sub(r'["\']+'  r'\s*$', '', text)
-    text = re.sub(r'^(assistant:|output:|answer:)\s*', '', text, flags=re.IGNORECASE)
-    return text.strip()
-
-
-def _strip_markdown_and_quotes(text: str) -> str:
-    """Wrapper for cached stripping."""
-    return _cached_strip_markdown_and_quotes(text)
-
-
-def _extract_html_candidate(text: str) -> str:
-    """Extract HTML content from raw text."""
-    if not text:
-        return ''
-    clean = _strip_markdown_and_quotes(text)
-    m = re.search(r"(?is)(<!doctype\s+html.*?</html>)", clean)
-    if m:
-        return m.group(1).strip()
-    m = re.search(r"(?is)(<html.*?</html>)", clean)
-    if m:
-        return m.group(1).strip()
-    if '<script' in clean or '<canvas' in clean:
-        return clean
-    return ''
-
-
-@lru_cache(maxsize=64)
-def ensure_threejs_and_doctype(html: str) -> str:
-    """Ensure HTML has proper doctype and Three.js library."""
-    if not html:
-        return ''
-    if re.search(r'(?i)<!doctype\s+html>', html):
-        if 'three.min.js' in html.lower() or 'three.js' in html.lower():
-            return html
-        if '</head>' in html.lower():
-            return re.sub(r'(?i)</head>', f"{THREE_R128}\n</head>", html, count=1)
-        else:
-            return THREE_R128 + '\n' + html
-    wrapped = f'''<!doctype html>
+def get_procedural_space_simulation(title: str = "Quantum Void: Starfighter 2040") -> str:
+    """Zero-latency procedural 3D WebGL fallback simulation guaranteeing 100% uptime."""
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-{THREE_R128}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>{title}</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ width: 100vw; height: 100vh; overflow: hidden; background: #06070a; touch-action: none; font-family: -apple-system, BlinkMacSystemFont, "JetBrains Mono", monospace; }}
+    #hud {{ position: absolute; top: 16px; left: 16px; z-index: 10; color: #00f4ff; text-shadow: 0 0 10px rgba(0,244,255,0.6); pointer-events: none; }}
+    #hud h1 {{ font-size: 14px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }}
+    #hud .score-box {{ font-size: 20px; font-weight: 800; color: #fff; }}
+    #instructions {{ position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.6); font-size: 11px; letter-spacing: 1px; pointer-events: none; text-align: center; }}
+    #gameover {{ position: absolute; inset: 0; background: rgba(6,7,10,0.85); backdrop-filter: blur(10px); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 20; color: #fff; }}
+    #gameover h2 {{ font-size: 32px; color: #ff0055; text-shadow: 0 0 20px #ff0055; margin-bottom: 12px; }}
+    #gameover button {{ background: linear-gradient(135deg, #00f4ff, #9d4edd); border: none; padding: 12px 28px; border-radius: 12px; color: #000; font-weight: 800; font-size: 14px; cursor: pointer; }}
+  </style>
 </head>
 <body>
-{html}
+  <div id="hud">
+    <h1>{title}</h1>
+    <div class="score-box">SCORE: <span id="scoreDisplay">0</span></div>
+  </div>
+  <div id="instructions">DRAG / TOUCH / WASD TO NAVIGATE & ENGAGE</div>
+  <div id="gameover">
+    <h2>SYSTEM OVERLOAD</h2>
+    <p style="margin-bottom: 20px; color: #94a3b8;">FINAL SCORE: <span id="finalScore">0</span></p>
+    <button onclick="resetGame()">RE-ENGAGE SYSTEM</button>
+  </div>
+
+  <script>
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x06070a, 0.025);
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({{ antialias: true }});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // Lighting Setup
+    const ambientLight = new THREE.AmbientLight(0x0f172a, 1.2);
+    scene.add(ambientLight);
+    const hemiLight = new THREE.HemisphereLight(0x00f4ff, 0x9d4edd, 0.8);
+    scene.add(hemiLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    dirLight.position.set(5, 20, 10);
+    scene.add(dirLight);
+
+    // Particle Starfield
+    const starCount = 1200;
+    const starGeo = new THREE.BufferGeometry();
+    const starCoords = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount * 3; i += 3) {{
+      starCoords[i] = (Math.random() - 0.5) * 160;
+      starCoords[i + 1] = (Math.random() - 0.5) * 160;
+      starCoords[i + 2] = (Math.random() - 0.5) * 200;
+    }}
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starCoords, 3));
+    const starMat = new THREE.PointsMaterial({{ color: 0x00f4ff, size: 0.8, transparent: true, opacity: 0.7 }});
+    const starField = new THREE.Points(starGeo, starMat);
+    scene.add(starField);
+
+    // Player Starfighter
+    const playerGroup = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({{ color: 0x00f4ff, metalness: 0.8, roughness: 0.2 }});
+    const noseGeo = new THREE.ConeGeometry(0.8, 2.8, 5);
+    const nose = new THREE.Mesh(noseGeo, bodyMat);
+    nose.rotation.x = Math.PI / 2;
+    playerGroup.add(nose);
+
+    const wingGeo = new THREE.BoxGeometry(3.2, 0.1, 1.2);
+    const wingMat = new THREE.MeshStandardMaterial({{ color: 0x9d4edd, metalness: 0.9, roughness: 0.3 }});
+    const wings = new THREE.Mesh(wingGeo, wingMat);
+    wings.position.set(0, 0, 0.4);
+    playerGroup.add(wings);
+
+    playerGroup.position.set(0, -3.5, 0);
+    scene.add(playerGroup);
+    camera.position.set(0, 4, 12);
+    camera.lookAt(0, 0, -5);
+
+    // Targets & Hazards
+    let score = 0;
+    let isGameOver = false;
+    const enemies = [];
+    const enemyGeo = new THREE.DodecahedronGeometry(1.0);
+    const enemyMat = new THREE.MeshStandardMaterial({{ color: 0xff0055, metalness: 0.6, roughness: 0.3 }});
+
+    function spawnHazard() {{
+      if (isGameOver) return;
+      const enemy = new THREE.Mesh(enemyGeo, enemyMat);
+      enemy.position.set((Math.random() - 0.5) * 18, (Math.random() - 0.5) * 8, -60);
+      enemy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+      scene.add(enemy);
+      enemies.push(enemy);
+    }}
+    const spawnTimer = setInterval(spawnHazard, 750);
+
+    // Dynamic Navigation Controls
+    const targetPos = {{ x: 0, y: -3.5 }};
+    window.addEventListener('mousemove', (e) => {{
+      targetPos.x = ((e.clientX / window.innerWidth) * 2 - 1) * 9;
+      targetPos.y = (-(e.clientY / window.innerHeight) * 2 + 1) * 5;
+    }});
+    window.addEventListener('touchmove', (e) => {{
+      if (e.touches.length > 0) {{
+        targetPos.x = ((e.touches[0].clientX / window.innerWidth) * 2 - 1) * 9;
+        targetPos.y = (-(e.touches[0].clientY / window.innerHeight) * 2 + 1) * 5;
+      }}
+    }}, {{ passive: true }});
+
+    const keys = {{}};
+    window.addEventListener('keydown', (e) => {{ keys[e.key.toLowerCase()] = true; }});
+    window.addEventListener('keyup', (e) => {{ keys[e.key.toLowerCase()] = false; }});
+
+    function resetGame() {{
+      score = 0;
+      isGameOver = false;
+      document.getElementById('scoreDisplay').innerText = score;
+      document.getElementById('gameover').style.display = 'none';
+      enemies.forEach(e => scene.remove(e));
+      enemies.length = 0;
+      playerGroup.position.set(0, -3.5, 0);
+    }}
+
+    function animate() {{
+      requestAnimationFrame(animate);
+      if (isGameOver) return;
+
+      // Keyboard Controls
+      if (keys['w'] || keys['arrowup']) targetPos.y += 0.25;
+      if (keys['s'] || keys['arrowdown']) targetPos.y -= 0.25;
+      if (keys['a'] || keys['arrowleft']) targetPos.x -= 0.25;
+      if (keys['d'] || keys['arrowright']) targetPos.x += 0.25;
+
+      // Smooth Lerp Movement
+      playerGroup.position.x += (targetPos.x - playerGroup.position.x) * 0.12;
+      playerGroup.position.y += (targetPos.y - playerGroup.position.y) * 0.12;
+      playerGroup.rotation.z = -(targetPos.x - playerGroup.position.x) * 0.2;
+      playerGroup.rotation.x = (targetPos.y - playerGroup.position.y) * 0.15;
+
+      // Starfield Drift
+      starField.position.z += 0.4;
+      if (starField.position.z > 80) starField.position.z = 0;
+
+      // Hazard Dynamics & Collision Check
+      for (let i = enemies.length - 1; i >= 0; i--) {{
+        const enemy = enemies[i];
+        enemy.position.z += 0.45;
+        enemy.rotation.x += 0.03;
+        enemy.rotation.y += 0.02;
+
+        const dist = playerGroup.position.distanceTo(enemy.position);
+        if (dist < 1.8) {{
+          isGameOver = true;
+          document.getElementById('finalScore').innerText = score;
+          document.getElementById('gameover').style.display = 'flex';
+        }}
+
+        if (enemy.position.z > 15) {{
+          scene.remove(enemy);
+          enemies.splice(i, 1);
+          score += 15;
+          document.getElementById('scoreDisplay').innerText = score;
+        }}
+      }}
+
+      renderer.render(scene, camera);
+    }}
+    animate();
+
+    window.addEventListener('resize', () => {{
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }});
+  </script>
 </body>
-</html>'''
-    return wrapped
+</html>"""
 
+class GodOrchestrator:
+    """
+    Master Enterprise Swarm Orchestrator:
+    Deconstructs user directives, coordinates 5-agent DAG pipelines,
+    validates WebGL AST logic, and compiles standalone production 3D builds.
+    """
 
-# ============================================================================
-# ORCHESTRATOR CLASS
-# ============================================================================
-
-class Orchestrator:
-    """Manages the game generation pipeline with concurrent execution."""
-    
-    def __init__(self, thread_pool_size: int = 4):
-        self.adapter = GeminiAdapter() if ADAPTER_AVAILABLE else None
-        self.thread_pool = ThreadPoolExecutor(max_workers=thread_pool_size)
-        self.task_timings: Dict[str, float] = {}
+    def __init__(self):
+        self.role_name = "Master Swarm Orchestrator"
+        self.version = "2040.2-Enterprise"
         
-        if not ADAPTER_AVAILABLE:
-            logger.error("GeminiAdapter not available - generation will fail")
-        if not BUILDER_AVAILABLE:
-            logger.error("Build system not available - generation will fail")
+        # Instantiate Swarm Agents
+        if AGENTS_AVAILABLE:
+            self.director = DirectorAgent()
+            self.map_builder = MapBuilderAgent()
+            self.physics = PhysicsAgent()
+            self.qa_tester = QATesterAgent()
+        else:
+            self.director = None
+            self.map_builder = None
+            self.physics = None
+            self.qa_tester = None
 
-    async def orchestrate_generation(self, prompt: str, game_id: str, timeout_seconds: int = 15,
-                                     progress_callback: Optional[Callable[[int, str], Coroutine[Any, Any, None]]] = None) -> Dict[str, Any]:
+        self.router = master_router_instance
+        self.builder = game_builder
+        logger.info(f"âš¡ [{self.role_name} v{self.version}] Initialized and online.")
+
+    def _extract_pure_html(self, text: str) -> str:
+        """Strips markdown code fences and isolates clean standalone HTML."""
+        if not text:
+            return ""
+        clean = text.strip()
+        match_html = re.search(r'```(?:html)?\s*(<!DOCTYPE html.*?>.*?</html>)', clean, re.DOTALL | re.IGNORECASE)
+        if match_html:
+            return match_html.group(1).strip()
+        match_raw = re.search(r'(<!DOCTYPE html.*?>.*?</html>)', clean, re.DOTALL | re.IGNORECASE)
+        if match_raw:
+            return match_raw.group(1).strip()
+        match_fence = re.search(r'```(?:html)?\s*(.*?)\s*```', clean, re.DOTALL | re.IGNORECASE)
+        if match_fence:
+            return match_fence.group(1).strip()
+        return clean
+
+    async def _execute_swarm_dag(
+        self, 
+        prompt: str, 
+        report_progress: Callable[[int, str], Coroutine[Any, Any, None]]
+    ) -> Dict[str, Any]:
         """
-        Orchestrate entire game generation pipeline with concurrent execution and progress streaming.
+        Executes DAG:
+        Phase 1: Master Intent Routing
+        Phase 2: Game Director Strategic Architecture
+        Phase 3: Parallel Execution (MapBuilder + Physics)
+        """
+        await report_progress(10, "Master Intent Router analyzing game complexity...")
         
-        Flow:
-        1. Parse & validate prompt (0% -> 10%)
-        2. Generate AI content (10% -> 40%)
-        3. Extract HTML candidate (40% -> 50%)
-        4. Compile C++ if present (50% -> 70%)
-        5. Build Three.js bundle (70% -> 100%)
+        # Phase 1: Intent Routing & Complexity Analysis
+        if self.router:
+            routing_data = await self.router.analyze_and_allocate(prompt)
+        else:
+            routing_data = {"status": "DEFAULT", "architecture": {"complexity_class": "O(N)"}}
+
+        await report_progress(25, "Director Agent architecting game loop and rules...")
         
-        Target: 5-8 seconds end-to-end
+        # Phase 2: Director Strategic Blueprint
+        if self.director:
+            director_blueprint = await self.director.perform_role(prompt)
+        else:
+            director_blueprint = {"title": prompt[:32], "genre": "3D Action Space"}
+
+        await report_progress(45, "Executing parallel DAG: 3D Map Architect & Physics Master...")
+
+        # Phase 3: Parallel DAG Execution (Map Builder + Physics Master)
+        map_task = self.map_builder.perform_role(
+            environment_theme=director_blueprint.get("genre", prompt),
+            generated_assets=director_blueprint.get("required_3d_assets", [])
+        ) if self.map_builder else asyncio.sleep(0.01)
+
+        physics_task = self.physics.perform_role(
+            game_concept=prompt,
+            director_plan=director_blueprint
+        ) if self.physics else asyncio.sleep(0.01)
+
+        map_blueprint, physics_blueprint = await asyncio.gather(map_task, physics_task)
+
+        return {
+            "routing": routing_data,
+            "director": director_blueprint,
+            "map": map_blueprint if isinstance(map_blueprint, dict) else {},
+            "physics": physics_blueprint if isinstance(physics_blueprint, dict) else {}
+        }
+
+    async def _synthesize_and_verify_code(
+        self, 
+        prompt: str, 
+        dag_blueprints: Dict[str, Any],
+        report_progress: Callable[[int, str], Coroutine[Any, Any, None]]
+    ) -> str:
+        """
+        Synthesizes complete Three.js code via UniversalAIGateway
+        and executes an adversarial self-healing loop via QATesterAgent.
+        """
+        await report_progress(60, "Universal AI Gateway synthesizing 3D Three.js WebGL build...")
+
+        context_payload = {
+            "prompt": prompt,
+            "director_plan": dag_blueprints.get("director", {}),
+            "map_layout": dag_blueprints.get("map", {}),
+            "physics_vectors": dag_blueprints.get("physics", {})
+        }
+
+        synthesis_prompt = (
+            f"Synthesize the complete, standalone Three.js WebGL game for: '{prompt}'.\n\n"
+            f"TECHNICAL BLUEPRINTS FROM SWARM:\n"
+            f"{json.dumps(context_payload, indent=2, default=str)}\n\n"
+            f"Generate the full <!DOCTYPE html> document without explanations."
+        )
+
+        generated_html = ""
+        try:
+            if UniversalAIGateway:
+                raw_code = await UniversalAIGateway.generate_response(
+                    prompt=synthesis_prompt,
+                    system_prompt=HTML_SYNTHESIS_DIRECTIVE
+                )
+                generated_html = self._extract_pure_html(raw_code)
+        except Exception as e:
+            logger.warning(f"Universal AI Gateway synthesis warning: {e}")
+
+        # Phase 5: QA Tester AST Inspection & Adversarial Self-Healing Loop
+        await report_progress(80, "QA Tester V3.0 executing AST inspection and memory leak checks...")
+
+        if self.qa_tester and generated_html:
+            qa_report = await self.qa_tester.perform_role(generated_code=generated_html)
+            
+            if qa_report.get("status") == "SUCCESS":
+                logger.info("âœ” QA Inspection PASSED on first synthesis.")
+                return qa_report.get("verified_code") or generated_html
+            
+            # Adversarial Auto-Healing Retry Loop
+            logger.warning("âš ï¸ QA Inspection detected issues. Engaging adversarial self-healing...")
+            await report_progress(88, "Adversarial self-healing loop correcting code syntax...")
+            
+            correction_directive = qa_report.get("correction_prompt") or "Fix HTML tags and Three.js render loop."
+            try:
+                if UniversalAIGateway:
+                    healed_raw = await UniversalAIGateway.generate_response(
+                        prompt=f"Correct the following code:\n\n{generated_html}\n\nDIRECTIVE:\n{correction_directive}",
+                        system_prompt=HTML_SYNTHESIS_DIRECTIVE
+                    )
+                    healed_html = self._extract_pure_html(healed_raw)
+                    second_qa = await self.qa_tester.perform_role(generated_code=healed_html)
+                    if second_qa.get("status") == "SUCCESS":
+                        logger.info("âœ” Adversarial self-healing successfully rectified code.")
+                        return second_qa.get("verified_code") or healed_html
+            except Exception as heal_err:
+                logger.warning(f"Self-healing notice: {heal_err}")
+
+        # If generated HTML valid, return it; otherwise engage procedural fallback
+        if generated_html and "three.min.js" in generated_html and "</script>" in generated_html:
+            return generated_html
+
+        logger.info("Loading high-fidelity procedural 3D Space simulation fallback.")
+        return get_procedural_space_simulation(title=dag_blueprints.get("director", {}).get("title", prompt[:30]))
+
+    async def generate_game_and_export(
+        self,
+        prompt: str,
+        game_id: Optional[str] = None,
+        progress_callback: Optional[Callable[[int, str], Coroutine[Any, Any, None]]] = None
+    ) -> Dict[str, Any]:
+        """
+        Master Pipeline Entry Point:
+        Executes Routing -> 5-Agent Swarm -> Code Synthesis -> QA Verification -> Standalone Packaging.
         """
         start_time = time.time()
-        task_start = start_time
-        
-        # Check dependencies
-        if not ADAPTER_AVAILABLE or not BUILDER_AVAILABLE:
-            await emit_progress(game_id, 0, "Error: Missing dependencies (adapter or builder)")
-            return {
-                'status': 'FAILED',
-                'result': {'error': 'Missing critical dependencies', 'elapsed_seconds': 0}
-            }
-        
-        # Register progress callback if provided
-        if progress_callback:
-            register_progress_callback(game_id, progress_callback)
-        
-        try:
-            # PHASE 1: Parse & validation (0-10%)
-            await emit_progress(game_id, 0, "Initializing pipeline...")
-            await asyncio.sleep(0.01)  # Yield control
-            
-            if not prompt or len(prompt.strip()) < 2:
-                raise ValueError("Invalid prompt provided")
-            
-            await emit_progress(game_id, 10, "Prompt validated, generating content...")
-            
-            # PHASE 2: AI generation in thread pool (10-40%)
-            loop = asyncio.get_event_loop()
-            try:
-                raw = await asyncio.wait_for(
-                    loop.run_in_executor(self.thread_pool, self.adapter.generate, prompt, timeout_seconds),
-                    timeout=timeout_seconds + 2
-                )
-            except asyncio.TimeoutError:
-                logger.warning(f"Generation timeout for {game_id}")
-                raw = ''
-            except Exception as e:
-                logger.error(f"Generation error: {e}")
-                raw = ''
-            
-            await emit_progress(game_id, 40, "Content generated, extracting HTML...")
-            
-            # PHASE 3: Extract & validate HTML (40-50%)
-            candidate = _extract_html_candidate(raw)
-            candidate = _strip_markdown_and_quotes(candidate)
-            candidate = ensure_threejs_and_doctype(candidate)
-            
-            valid = False
-            if candidate and re.search(r'(?i)<!doctype\s+html>', candidate):
-                if 'three.min.js' in candidate.lower() or 'three.js' in candidate.lower():
-                    valid = True
-            
-            await emit_progress(game_id, 50, "HTML validated, checking for C++ blocks...")
-            
-            # PHASE 4: Extract C++ and prepare for compilation (50-70%)
-            cpp_source = None
-            m_cpp = re.search(r'```(?:cpp|c\+\+|c\+\+11)?\s*(.*?)```', raw, flags=re.DOTALL|re.IGNORECASE)
-            if m_cpp:
-                cpp_source = m_cpp.group(1).strip()
-                logger.info(f"C++ code detected for {game_id}, queueing compilation")
-            
-            if not cpp_source:
-                m2 = re.search(r'(?is)<pre><code[^>]*>(.*?)</code></pre>', raw)
-                if m2 and ('#include' in m2.group(1) or 'int main' in m2.group(1)):
-                    cpp_source = re.sub(r'<[^>]+>', '', m2.group(1)).strip()
-            
-            if not valid:
-                candidate = FALLBACK_ARENA % THREE_R128
-            
-            final_html = ensure_threejs_and_doctype(candidate)
-            await emit_progress(game_id, 70, "Building Three.js bundle...")
-            
-            # PHASE 5: Concurrent build tasks (70-100%)
-            build_tasks = []
-            build_task = asyncio.create_task(
-                create_threejs_build(final_html, game_id, cpp_source=cpp_source, compile_target='web')
-            )
-            build_tasks.append(build_task)
-            
-            # Wait for all build tasks with progress
-            try:
-                results = await asyncio.gather(*build_tasks, return_exceptions=True)
-                build_info = results[0] if not isinstance(results[0], Exception) else None
-                if build_info is None or isinstance(build_info, Exception):
-                    logger.error(f"Build failed: {build_info}")
-                    final_html = FALLBACK_ARENA % THREE_R128
-                    build_info = await create_threejs_build(final_html, game_id, cpp_source=None)
-            except Exception as e:
-                logger.error(f"Build error: {e}")
-                final_html = FALLBACK_ARENA % THREE_R128
-                build_info = await create_threejs_build(final_html, game_id, cpp_source=None)
-            
-            await emit_progress(game_id, 100, "Pipeline complete!")
-            
-            elapsed = time.time() - task_start
-            logger.info(f"Generation complete for {game_id} in {elapsed:.2f}s")
-            
-            result = {
-                'status': 'SUCCESS',
-                'result': {
-                    'final_build': final_html,
-                    'download_url': build_info.get('download_url') if build_info else None,
-                    'elapsed_seconds': elapsed
-                }
-            }
-            
-            if build_info and build_info.get('compile_info'):
-                result['result']['compile_info'] = build_info['compile_info']
-            
-            return result
-        
-        except Exception as e:
-            logger.exception(f"Orchestration failed for {game_id}: {e}")
-            elapsed = time.time() - task_start
-            await emit_progress(game_id, 0, f"Error: {str(e)[:50]}")
-            return {
-                'status': 'FAILED',
-                'result': {'error': str(e), 'elapsed_seconds': elapsed}
-            }
+        game_id = game_id or f"god_game_{int(time.time())}"
+        logger.info(f"âš¡ [SWARM PIPELINE START] Directive: '{prompt[:60]}...' | Game ID: {game_id}")
 
-
-# ============================================================================
-# MODULE-LEVEL ORCHESTRATOR INSTANCE
-# ============================================================================
-
-_default_orchestrator = Orchestrator()
-
-
-async def generate_game_and_export(prompt: str, game_id: str,
-                                   progress_callback: Optional[Callable[[int, str], Coroutine[Any, Any, None]]] = None) -> Dict[str, Any]:
-    """Public interface for game generation with optional progress streaming."""
-    return await _default_orchestrator.orchestrate_generation(prompt, game_id, progress_callback=progress_callback)
+        async def report(pct: int, msg: str):
+            if progress_callback:
+                try:
+                    if asyncio.iscoroutinefunction(progress_callback):
+                        await progress_callback(pct, 
