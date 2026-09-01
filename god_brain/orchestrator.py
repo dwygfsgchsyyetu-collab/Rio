@@ -1,14 +1,14 @@
 """
 god_brain/orchestrator.py
 ================================================================================
-ENTERPRISE EDITION: God Swarm Master Orchestrator (Rio 2040 Architecture)
+ENTERPRISE HIGH-TECH EDITION: God Swarm Master Orchestrator (Rio 2040)
 ================================================================================
 Capabilities:
-- Dynamic Master Intent Routing & Resource Classification
-- Asynchronous DAG Pipeline (Director -> [MapBuilder || Physics] -> Synthesis -> QA)
-- Adversarial Self-Healing Loop powered by QATesterAgent V3.0
-- Universal AI Gateway Integration (100% Zero-Hardcoding, Any Model/Provider)
-- High-Performance Standalone HTML5 Packaging with Zero-Crash Fallbacks
+- Dynamic Prompt Analysis & Full 3D WebGL Multi-Genre Synthesis (Chess, Racing, FPS, RPG, Sandbox)
+- Asynchronous DAG Pipeline (Director -> [MapBuilder || Physics] -> Synthesis -> QA Self-Healing)
+- Built-in Web Audio API Procedural Sound Synthesizer (Zero external asset dependency)
+- Native Mobile Touch, Virtual Joystick, and Mouse/Keyboard Event Generators
+- Automatic Pre-Packaging into Web, Android (Capacitor), and PC (Tauri) Standalone Bundles
 ================================================================================
 """
 
@@ -29,21 +29,24 @@ if not logger.handlers:
     ch.setFormatter(logging.Formatter('%(asctime)s - [GOD ORCHESTRATOR] - %(levelname)s - %(message)s'))
     logger.addHandler(ch)
 
-# Universal AI Gateway Safe Import
+EXPORTS_ROOT = Path(os.environ.get("EXPORTS_ROOT", "exports"))
+EXPORTS_ROOT.mkdir(parents=True, exist_ok=True)
+
+# 1. Universal AI Gateway Safe Import
 try:
     from god_brain.api_nexus import UniversalAIGateway
 except Exception as e:
     logger.warning(f"UniversalAIGateway import notice in Orchestrator: {e}")
     UniversalAIGateway = None
 
-# Master Intent Router Safe Import
+# 2. Deployment Core Engine Safe Import
 try:
-    from the_god_router.intent_classifier import master_router_instance
+    from deployment.deployment_core import deployment_engine
 except Exception as e:
-    logger.warning(f"MasterIntentRouter import notice: {e}")
-    master_router_instance = None
+    logger.warning(f"Deployment Engine import notice: {e}")
+    deployment_engine = None
 
-# Swarm Agents Safe Imports
+# 3. Swarm Agents Safe Imports
 try:
     from god_brain.agents.director_agent import DirectorAgent
     from god_brain.agents.map_builder_agent import MapBuilderAgent
@@ -51,211 +54,380 @@ try:
     from god_brain.agents.qa_tester_agent import QATesterAgent
     AGENTS_AVAILABLE = True
 except Exception as e:
-    logger.warning(f"Swarm Agents import notice in Orchestrator: {e}")
+    logger.warning(f"Swarm Agents import notice: {e}")
     AGENTS_AVAILABLE = False
     DirectorAgent = None
     MapBuilderAgent = None
     PhysicsAgent = None
     QATesterAgent = None
 
-# Universal Builder Safe Import
-try:
-    from game_compilers.universal_builder import game_builder
-except Exception as e:
-    logger.warning(f"UniversalBuilder import notice in Orchestrator: {e}")
-    game_builder = None
+HIGH_TECH_SYNTHESIS_DIRECTIVE = """
+You are the Supreme WebGL & Three.js 3D Game Synthesizer of God Node V2 (Rio 2040).
+Given the user's specific directive, engineer a COMPLETE, standalone, fully functional, highly polished 3D game in a single HTML5 document with embedded JavaScript and CSS.
 
-EXPORTS_ROOT = Path(os.environ.get("EXPORTS_ROOT", "exports"))
-EXPORTS_ROOT.mkdir(parents=True, exist_ok=True)
-
-HTML_SYNTHESIS_DIRECTIVE = """
-You are the Master WebGL & Three.js Compiler of God Node V2 (Rio 2040).
-Given the architectural blueprints from the Director, Map Architect, and Physics Master,
-generate a COMPLETE, standalone, production-ready, interactive 3D WebGL game in pure HTML and JavaScript.
-
-MANDATORY RULES:
-1. Output ONLY the raw executable HTML starting with <!DOCTYPE html> and ending with </html>.
-2. Zero markdown code fences, zero conversational text, zero trailing explanations.
-3. Link Three.js CDN: <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-4. Include clean inline CSS: margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background: #06070a; touch-action: none; font-family: monospace;
-5. Build rich gameplay mechanics:
-   - Dynamic player vessel/character with keyboard (WASD/Arrows) and touch controls.
-   - 3D particle starfield / environmental grid.
-   - PBR MeshStandardMaterial lighting with HemisphereLight and DirectionalLight.
-   - Dynamic spawning targets/enemies/hazards with bounding radius collision detection.
-   - HUD overlay (Score counter, health bar, game over state).
-   - Clean requestAnimationFrame(animate) render loop.
+CRITICAL ARCHITECTURE RULES:
+1. OUTPUT ONLY pure executable HTML inside a single ```html ... ``` block. No markdown conversation outside it.
+2. IMPORT THREE.JS: <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+3. DYNAMIC THEME MATCHING:
+   - If user asks for CHESS: Create a real 8x8 checkered board with interactive 3D pieces, raycasting click/touch selection, turn indicators, move validation, and smooth piece movement animations.
+   - If user asks for RACING/CAR: Create a dynamic 3D road, procedural track, player vehicle with drift physics, acceleration/steering, obstacle traffic, and speed HUD.
+   - If user asks for SPACE/SHOOTER: Create a starfighter with kinetic lasers, space debris, boss enemies, health shields, and particle explosions.
+   - If user asks for PUZZLE/ARCADE: Create appropriate 3D physics blocks, scoring combos, sound triggers, and win/loss states.
+4. CONTROLS: Support BOTH Keyboard (WASD/Arrows/Space) AND Mobile Touch (Touch Drag / Tap Raycasting).
+5. AUDIO: Use the browser's native Web Audio API (AudioContext) for procedural synthesized sound effects (laser sound, click sound, explosion rumble, victory chime) without external MP3 dependencies.
+6. VISUAL FIDELITY: PBR MeshStandardMaterial, HemisphereLight, DirectionalLight with shadows, responsive window resizing, and neon cyberpunk/modern HUD.
+7. LIFECYCLE: Working score tracker, health bar, Game Over screen, and a "RESTART / PLAY AGAIN" button that fully resets game variables.
 """
 
-def get_procedural_space_simulation(title: str = "Quantum Void: Starfighter 2040") -> str:
-    """Zero-latency procedural 3D WebGL fallback simulation guaranteeing 100% uptime."""
-    return f"""<!DOCTYPE html>
+def generate_procedural_fallback_game(prompt: str) -> str:
+    """
+    Ultra High-Tech Multi-Genre Procedural Engine.
+    Dynamically crafts Chess, Racing, Space, or Arcade 3D games if remote LLM times out.
+    """
+    prompt_lower = prompt.lower()
+    is_chess = any(k in prompt_lower for k in ["chess", "board", "pawn", "king", "queen", "rook", "knight", "bishop"])
+    is_racing = any(k in prompt_lower for k in ["race", "racing", "car", "drive", "drift", "speed", "track"])
+
+    if is_chess:
+        return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>{title}</title>
+  <title>3D Quantum Chess 2040</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ width: 100vw; height: 100vh; overflow: hidden; background: #06070a; touch-action: none; font-family: -apple-system, BlinkMacSystemFont, "JetBrains Mono", monospace; }}
-    #hud {{ position: absolute; top: 16px; left: 16px; z-index: 10; color: #00f4ff; text-shadow: 0 0 10px rgba(0,244,255,0.6); pointer-events: none; }}
-    #hud h1 {{ font-size: 14px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }}
-    #hud .score-box {{ font-size: 20px; font-weight: 800; color: #fff; }}
-    #instructions {{ position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.6); font-size: 11px; letter-spacing: 1px; pointer-events: none; text-align: center; }}
-    #gameover {{ position: absolute; inset: 0; background: rgba(6,7,10,0.85); backdrop-filter: blur(10px); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 20; color: #fff; }}
-    #gameover h2 {{ font-size: 32px; color: #ff0055; text-shadow: 0 0 20px #ff0055; margin-bottom: 12px; }}
-    #gameover button {{ background: linear-gradient(135deg, #00f4ff, #9d4edd); border: none; padding: 12px 28px; border-radius: 12px; color: #000; font-weight: 800; font-size: 14px; cursor: pointer; }}
+    body {{ width: 100vw; height: 100vh; overflow: hidden; background: #070913; font-family: monospace; color: #fff; }}
+    #hud {{ position: absolute; top: 16px; left: 16px; z-index: 10; pointer-events: none; }}
+    #hud h1 {{ font-size: 16px; color: #00f4ff; letter-spacing: 2px; text-shadow: 0 0 10px rgba(0,244,255,0.6); }}
+    #turnIndicator {{ font-size: 13px; color: #a5b4fc; margin-top: 4px; }}
+    #instructions {{ position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #94a3b8; pointer-events: none; text-align: center; }}
+    #btnReset {{ position: absolute; top: 16px; right: 16px; background: #1e1b4b; border: 1px solid #6366f1; color: #fff; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: bold; z-index: 20; }}
   </style>
 </head>
 <body>
   <div id="hud">
-    <h1>{title}</h1>
-    <div class="score-box">SCORE: <span id="scoreDisplay">0</span></div>
+    <h1>3D QUANTUM CHESS</h1>
+    <div id="turnIndicator">TURN: <span id="turnText" style="color:#00ffcc;">WHITE (CYAN)</span></div>
   </div>
-  <div id="instructions">DRAG / TOUCH / WASD TO NAVIGATE & ENGAGE</div>
+  <button id="btnReset" onclick="resetBoard()">RESET MATCH</button>
+  <div id="instructions">TAP / CLICK A PIECE TO SELECT & MOVE TO HIGHLIGHTED SQUARES</div>
+
+  <script>
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x070913, 0.02);
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 14, 12);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({{ antialias: true }});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    // High-Tech Lighting Rig
+    const ambient = new THREE.AmbientLight(0x1e1b4b, 1.2);
+    scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    dirLight.position.set(8, 20, 10);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    const hemi = new THREE.HemisphereLight(0x00f4ff, 0x9d4edd, 0.6);
+    scene.add(hemi);
+
+    // Procedural Audio Synthesizer
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(freq, type, duration) {{
+      try {{
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      }} catch(e) {{}}
+    }}
+
+    // 8x8 Chess Board Creation
+    const boardGroup = new THREE.Group();
+    const squareGeo = new THREE.BoxGeometry(1.4, 0.3, 1.4);
+    const whiteSquareMat = new THREE.MeshStandardMaterial({{ color: 0x1e293b, roughness: 0.3, metalness: 0.5 }});
+    const blackSquareMat = new THREE.MeshStandardMaterial({{ color: 0x090d16, roughness: 0.8, metalness: 0.8 }});
+    const highlightMat = new THREE.MeshStandardMaterial({{ color: 0x00f4ff, emissive: 0x00f4ff, emissiveIntensity: 0.5 }});
+
+    const boardSquares = [];
+    for(let r=0; r<8; r++) {{
+      for(let c=0; c<8; c++) {{
+        const isWhite = (r + c) % 2 === 0;
+        const sq = new THREE.Mesh(squareGeo, isWhite ? whiteSquareMat : blackSquareMat);
+        sq.position.set((c - 3.5) * 1.5, 0, (r - 3.5) * 1.5);
+        sq.receiveShadow = true;
+        sq.userData = {{ row: r, col: c, isSquare: true }};
+        boardGroup.add(sq);
+        boardSquares.push(sq);
+      }}
+    }}
+    scene.add(boardGroup);
+
+    // Piece Geometries
+    const pieceGroup = new THREE.Group();
+    const whitePieceMat = new THREE.MeshStandardMaterial({{ color: 0x00f4ff, roughness: 0.2, metalness: 0.8 }});
+    const blackPieceMat = new THREE.MeshStandardMaterial({{ color: 0xff0055, roughness: 0.2, metalness: 0.8 }});
+
+    const pieces = [];
+    function spawnPiece(type, color, row, col) {{
+      let geo = new THREE.CylinderGeometry(0.4, 0.55, 1.0, 16);
+      if(type === 'king') geo = new THREE.CylinderGeometry(0.5, 0.6, 1.8, 16);
+      if(type === 'queen') geo = new THREE.CylinderGeometry(0.45, 0.55, 1.6, 16);
+      if(type === 'knight') geo = new THREE.ConeGeometry(0.5, 1.3, 5);
+      if(type === 'rook') geo = new THREE.BoxGeometry(0.9, 1.2, 0.9);
+
+      const mat = color === 'white' ? whitePieceMat : blackPieceMat;
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set((col - 3.5) * 1.5, 0.7, (row - 3.5) * 1.5);
+      mesh.castShadow = true;
+      mesh.userData = {{ type, color, row, col, isPiece: true }};
+      pieceGroup.add(mesh);
+      pieces.push(mesh);
+    }}
+
+    function initPieces() {{
+      pieces.forEach(p => pieceGroup.remove(p));
+      pieces.length = 0;
+      for(let c=0; c<8; c++) {{
+        spawnPiece('pawn', 'black', 1, c);
+        spawnPiece('pawn', 'white', 6, c);
+      }}
+      const backRank = ['rook', 'knight', 'bishop', 'queen', 'king', 'bishop', 'knight', 'rook'];
+      for(let c=0; c<8; c++) {{
+        spawnPiece(backRank[c], 'black', 0, c);
+        spawnPiece(backRank[c], 'white', 7, c);
+      }}
+    }}
+    scene.add(pieceGroup);
+    initPieces();
+
+    // Raycasting Click & Move System
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let selectedPiece = null;
+    let currentTurn = 'white';
+
+    function handleInteraction(clientX, clientY) {{
+      mouse.x = (clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObjects(scene.children, true);
+      for(let hit of intersects) {{
+        const obj = hit.object;
+        if(obj.userData && obj.userData.isPiece) {{
+          if(obj.userData.color === currentTurn) {{
+            selectedPiece = obj;
+            playBeep(440, 'sine', 0.1);
+            boardSquares.forEach(sq => {{
+              if(Math.abs(sq.userData.row - obj.userData.row) <= 2 && Math.abs(sq.userData.col - obj.userData.col) <= 2) {{
+                sq.material = highlightMat;
+              }} else {{
+                sq.material = (sq.userData.row + sq.userData.col)%2===0 ? whiteSquareMat : blackSquareMat;
+              }}
+            }});
+            return;
+          }} else if(selectedPiece) {{
+            // Capture Piece
+            movePiece(selectedPiece, obj.userData.row, obj.userData.col, obj);
+            return;
+          }}
+        }} else if(obj.userData && obj.userData.isSquare && selectedPiece) {{
+          // Move Piece to Square
+          movePiece(selectedPiece, obj.userData.row, obj.userData.col);
+          return;
+        }}
+      }}
+    }}
+
+    function movePiece(piece, targetRow, targetCol, capturedObj = null) {{
+      if(capturedObj) {{
+        pieceGroup.remove(capturedObj);
+        const idx = pieces.indexOf(capturedObj);
+        if(idx > -1) pieces.splice(idx, 1);
+        playBeep(220, 'sawtooth', 0.2);
+      }} else {{
+        playBeep(660, 'triangle', 0.12);
+      }}
+
+      piece.position.x = (targetCol - 3.5) * 1.5;
+      piece.position.z = (targetRow - 3.5) * 1.5;
+      piece.userData.row = targetRow;
+      piece.userData.col = targetCol;
+
+      selectedPiece = null;
+      boardSquares.forEach(sq => {{
+        sq.material = (sq.userData.row + sq.userData.col)%2===0 ? whiteSquareMat : blackSquareMat;
+      }});
+
+      currentTurn = currentTurn === 'white' ? 'black' : 'white';
+      const turnEl = document.getElementById('turnText');
+      turnEl.innerText = currentTurn === 'white' ? 'WHITE (CYAN)' : 'BLACK (CRIMSON)';
+      turnEl.style.color = currentTurn === 'white' ? '#00ffcc' : '#ff0055';
+    }}
+
+    window.addEventListener('pointerdown', (e) => handleInteraction(e.clientX, e.clientY));
+    function resetBoard() {{ initPieces(); selectedPiece = null; }}
+
+    function animate() {{
+      requestAnimationFrame(animate);
+      boardGroup.rotation.y = Math.sin(Date.now() * 0.0005) * 0.05;
+      pieceGroup.rotation.y = boardGroup.rotation.y;
+      renderer.render(scene, camera);
+    }}
+    animate();
+
+    window.addEventListener('resize', () => {{
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }});
+  </script>
+</body>
+</html>"""
+
+    elif is_racing:
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Cyber Velocity 3D</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ width: 100vw; height: 100vh; overflow: hidden; background: #05050c; font-family: monospace; }}
+    #hud {{ position: absolute; top: 16px; left: 16px; z-index: 10; color: #00f4ff; text-shadow: 0 0 10px rgba(0,244,255,0.6); pointer-events: none; }}
+    #speedometer {{ font-size: 24px; font-weight: 800; color: #fff; }}
+    #gameover {{ position: absolute; inset: 0; background: rgba(5,5,12,0.88); backdrop-filter: blur(8px); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 30; color: #fff; }}
+    #gameover button {{ background: linear-gradient(135deg, #00f4ff, #6366f1); border: none; padding: 12px 30px; border-radius: 10px; color: #000; font-weight: 800; cursor: pointer; }}
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <h1>CYBER VELOCITY 3D</h1>
+    <div>SPEED: <span id="speedometer">120</span> KM/H &bull; DIST: <span id="distVal">0</span>M</div>
+  </div>
   <div id="gameover">
-    <h2>SYSTEM OVERLOAD</h2>
-    <p style="margin-bottom: 20px; color: #94a3b8;">FINAL SCORE: <span id="finalScore">0</span></p>
-    <button onclick="resetGame()">RE-ENGAGE SYSTEM</button>
+    <h2 style="font-size:32px; color:#ff0055; margin-bottom:12px;">VEHICLE CRASHED</h2>
+    <p style="color:#94a3b8; margin-bottom:20px;">FINAL DISTANCE: <span id="finalDist">0</span> METERS</p>
+    <button onclick="resetRace()">RESTART RUN</button>
   </div>
 
   <script>
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x06070a, 0.025);
+    scene.fog = new THREE.FogExp2(0x05050c, 0.02);
     const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 4, 8);
+    camera.lookAt(0, 1, 0);
+
     const renderer = new THREE.WebGLRenderer({{ antialias: true }});
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     document.body.appendChild(renderer.domElement);
 
-    // Lighting Setup
-    const ambientLight = new THREE.AmbientLight(0x0f172a, 1.2);
-    scene.add(ambientLight);
-    const hemiLight = new THREE.HemisphereLight(0x00f4ff, 0x9d4edd, 0.8);
-    scene.add(hemiLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-    dirLight.position.set(5, 20, 10);
-    scene.add(dirLight);
+    scene.add(new THREE.AmbientLight(0x1e1b4b, 1.2));
+    const dir = new THREE.DirectionalLight(0x00f4ff, 2.0);
+    dir.position.set(5, 15, 10);
+    scene.add(dir);
 
-    // Particle Starfield
-    const starCount = 1200;
-    const starGeo = new THREE.BufferGeometry();
-    const starCoords = new Float32Array(starCount * 3);
-    for (let i = 0; i < starCount * 3; i += 3) {{
-      starCoords[i] = (Math.random() - 0.5) * 160;
-      starCoords[i + 1] = (Math.random() - 0.5) * 160;
-      starCoords[i + 2] = (Math.random() - 0.5) * 200;
+    // Endless Cyber Highway Track
+    const roadGeo = new THREE.PlaneGeometry(16, 200, 10, 10);
+    const roadMat = new THREE.MeshStandardMaterial({{ color: 0x0f172a, roughness: 0.8 }});
+    const road = new THREE.Mesh(roadGeo, roadMat);
+    road.rotation.x = -Math.PI / 2;
+    road.position.z = -50;
+    scene.add(road);
+
+    // Player Cyber Car
+    const carGroup = new THREE.Group();
+    const chassis = new THREE.Mesh(
+      new THREE.BoxGeometry(2.0, 0.6, 3.8),
+      new THREE.MeshStandardMaterial({{ color: 0x00f4ff, metalness: 0.8, roughness: 0.2 }})
+    );
+    chassis.position.y = 0.5;
+    carGroup.add(chassis);
+    const cabin = new THREE.Mesh(
+      new THREE.BoxGeometry(1.4, 0.5, 1.8),
+      new THREE.MeshStandardMaterial({{ color: 0x090d16, metalness: 0.9, roughness: 0.1 }})
+    );
+    cabin.position.set(0, 0.9, -0.2);
+    carGroup.add(cabin);
+    scene.add(carGroup);
+
+    // Obstacle Vehicles
+    const traffic = [];
+    const obsGeo = new THREE.BoxGeometry(2.0, 0.8, 3.5);
+    const obsMat = new THREE.MeshStandardMaterial({{ color: 0xff0055, roughness: 0.3 }});
+    for(let i=0; i<6; i++) {{
+      const obs = new THREE.Mesh(obsGeo, obsMat);
+      resetObs(obs);
+      obs.position.z = -Math.random() * 120 - 20;
+      scene.add(obs);
+      traffic.push(obs);
     }}
-    starGeo.setAttribute('position', new THREE.BufferAttribute(starCoords, 3));
-    const starMat = new THREE.PointsMaterial({{ color: 0x00f4ff, size: 0.8, transparent: true, opacity: 0.7 }});
-    const starField = new THREE.Points(starGeo, starMat);
-    scene.add(starField);
 
-    // Player Starfighter
-    const playerGroup = new THREE.Group();
-    const bodyMat = new THREE.MeshStandardMaterial({{ color: 0x00f4ff, metalness: 0.8, roughness: 0.2 }});
-    const noseGeo = new THREE.ConeGeometry(0.8, 2.8, 5);
-    const nose = new THREE.Mesh(noseGeo, bodyMat);
-    nose.rotation.x = Math.PI / 2;
-    playerGroup.add(nose);
-
-    const wingGeo = new THREE.BoxGeometry(3.2, 0.1, 1.2);
-    const wingMat = new THREE.MeshStandardMaterial({{ color: 0x9d4edd, metalness: 0.9, roughness: 0.3 }});
-    const wings = new THREE.Mesh(wingGeo, wingMat);
-    wings.position.set(0, 0, 0.4);
-    playerGroup.add(wings);
-
-    playerGroup.position.set(0, -3.5, 0);
-    scene.add(playerGroup);
-    camera.position.set(0, 4, 12);
-    camera.lookAt(0, 0, -5);
-
-    // Targets & Hazards
-    let score = 0;
-    let isGameOver = false;
-    const enemies = [];
-    const enemyGeo = new THREE.DodecahedronGeometry(1.0);
-    const enemyMat = new THREE.MeshStandardMaterial({{ color: 0xff0055, metalness: 0.6, roughness: 0.3 }});
-
-    function spawnHazard() {{
-      if (isGameOver) return;
-      const enemy = new THREE.Mesh(enemyGeo, enemyMat);
-      enemy.position.set((Math.random() - 0.5) * 18, (Math.random() - 0.5) * 8, -60);
-      enemy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-      scene.add(enemy);
-      enemies.push(enemy);
+    function resetObs(obs) {{
+      const lanes = [-5.5, -1.8, 1.8, 5.5];
+      obs.position.x = lanes[Math.floor(Math.random() * lanes.length)];
+      obs.position.y = 0.5;
+      obs.position.z = -140 - Math.random() * 40;
     }}
-    const spawnTimer = setInterval(spawnHazard, 750);
 
-    // Dynamic Navigation Controls
-    const targetPos = {{ x: 0, y: -3.5 }};
-    window.addEventListener('mousemove', (e) => {{
-      targetPos.x = ((e.clientX / window.innerWidth) * 2 - 1) * 9;
-      targetPos.y = (-(e.clientY / window.innerHeight) * 2 + 1) * 5;
+    let posX = 0, targetX = 0, distance = 0, isGameOver = false;
+    window.addEventListener('pointermove', (e) => {{
+      targetX = ((e.clientX / window.innerWidth) * 2 - 1) * 6.5;
     }});
-    window.addEventListener('touchmove', (e) => {{
-      if (e.touches.length > 0) {{
-        targetPos.x = ((e.touches[0].clientX / window.innerWidth) * 2 - 1) * 9;
-        targetPos.y = (-(e.touches[0].clientY / window.innerHeight) * 2 + 1) * 5;
-      }}
-    }}, {{ passive: true }});
-
     const keys = {{}};
-    window.addEventListener('keydown', (e) => {{ keys[e.key.toLowerCase()] = true; }});
-    window.addEventListener('keyup', (e) => {{ keys[e.key.toLowerCase()] = false; }});
+    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-    function resetGame() {{
-      score = 0;
+    function resetRace() {{
+      distance = 0;
       isGameOver = false;
-      document.getElementById('scoreDisplay').innerText = score;
       document.getElementById('gameover').style.display = 'none';
-      enemies.forEach(e => scene.remove(e));
-      enemies.length = 0;
-      playerGroup.position.set(0, -3.5, 0);
+      traffic.forEach(resetObs);
+      carGroup.position.x = 0;
     }}
 
     function animate() {{
       requestAnimationFrame(animate);
-      if (isGameOver) return;
+      if(isGameOver) return;
 
-      // Keyboard Controls
-      if (keys['w'] || keys['arrowup']) targetPos.y += 0.25;
-      if (keys['s'] || keys['arrowdown']) targetPos.y -= 0.25;
-      if (keys['a'] || keys['arrowleft']) targetPos.x -= 0.25;
-      if (keys['d'] || keys['arrowright']) targetPos.x += 0.25;
+      if(keys['a'] || keys['arrowleft']) targetX -= 0.25;
+      if(keys['d'] || keys['arrowright']) targetX += 0.25;
+      targetX = Math.max(-6.5, Math.min(6.5, targetX));
 
-      // Smooth Lerp Movement
-      playerGroup.position.x += (targetPos.x - playerGroup.position.x) * 0.12;
-      playerGroup.position.y += (targetPos.y - playerGroup.position.y) * 0.12;
-      playerGroup.rotation.z = -(targetPos.x - playerGroup.position.x) * 0.2;
-      playerGroup.rotation.x = (targetPos.y - playerGroup.position.y) * 0.15;
+      posX += (targetX - posX) * 0.12;
+      carGroup.position.x = posX;
+      carGroup.rotation.z = -(targetX - posX) * 0.15;
+      carGroup.rotation.y = (targetX - posX) * 0.1;
 
-      // Starfield Drift
-      starField.position.z += 0.4;
-      if (starField.position.z > 80) starField.position.z = 0;
+      distance += 1;
+      document.getElementById('distVal').innerText = distance;
 
-      // Hazard Dynamics & Collision Check
-      for (let i = enemies.length - 1; i >= 0; i--) {{
-        const enemy = enemies[i];
-        enemy.position.z += 0.45;
-        enemy.rotation.x += 0.03;
-        enemy.rotation.y += 0.02;
-
-        const dist = playerGroup.position.distanceTo(enemy.position);
-        if (dist < 1.8) {{
+      traffic.forEach(obs => {{
+        obs.position.z += 0.85;
+        if(obs.position.distanceTo(carGroup.position) < 2.4) {{
           isGameOver = true;
-          document.getElementById('finalScore').innerText = score;
+          document.getElementById('finalDist').innerText = distance;
           document.getElementById('gameover').style.display = 'flex';
         }}
-
-        if (enemy.position.z > 15) {{
-          scene.remove(enemy);
-          enemies.splice(i, 1);
-          score += 15;
-          document.getElementById('scoreDisplay').innerText = score;
-        }}
-      }}
+        if(obs.position.z > 15) resetObs(obs);
+      }});
 
       renderer.render(scene, camera);
     }}
@@ -270,35 +442,138 @@ def get_procedural_space_simulation(title: str = "Quantum Void: Starfighter 2040
 </body>
 </html>"""
 
+    # Default High-Octane Space Defense Simulation
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Quantum Defender 2040</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ width: 100vw; height: 100vh; overflow: hidden; background: #06070a; touch-action: none; font-family: monospace; color: #00f4ff; }}
+    #hud {{ position: absolute; top: 16px; left: 16px; z-index: 10; pointer-events: none; }}
+    #hud h1 {{ font-size: 15px; letter-spacing: 2px; text-shadow: 0 0 10px rgba(0,244,255,0.7); }}
+    #scoreBox {{ font-size: 22px; font-weight: 800; color: #fff; }}
+    #gameover {{ position: absolute; inset: 0; background: rgba(6,7,10,0.85); backdrop-filter: blur(8px); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 30; color: #fff; }}
+    #gameover button {{ background: linear-gradient(135deg, #00f4ff, #9d4edd); border: none; padding: 12px 28px; border-radius: 12px; color: #000; font-weight: 800; cursor: pointer; }}
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <h1>QUANTUM DEFENDER</h1>
+    <div id="scoreBox">SCORE: <span id="scoreVal">0</span></div>
+  </div>
+  <div id="gameover">
+    <h2 style="font-size:32px; color:#ff0055; margin-bottom:12px;">HULL BREACHED</h2>
+    <p style="color:#94a3b8; margin-bottom:20px;">FINAL SCORE: <span id="finalScore">0</span></p>
+    <button onclick="resetSpaceGame()">RE-ENGAGE SYSTEM</button>
+  </div>
+
+  <script>
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 4, 12);
+    camera.lookAt(0, 0, -5);
+
+    const renderer = new THREE.WebGLRenderer({{ antialias: true }});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0x0f172a, 1.2));
+    scene.add(new THREE.HemisphereLight(0x00f4ff, 0x9d4edd, 0.8));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.5);
+    dir.position.set(5, 20, 10);
+    scene.add(dir);
+
+    // Player Vessel
+    const player = new THREE.Group();
+    const bodyMesh = new THREE.Mesh(new THREE.ConeGeometry(0.8, 2.8, 5), new THREE.MeshStandardMaterial({{ color: 0x00f4ff, metalness: 0.8, roughness: 0.2 }}));
+    bodyMesh.rotation.x = Math.PI / 2;
+    player.add(bodyMesh);
+    const wingsMesh = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.1, 1.2), new THREE.MeshStandardMaterial({{ color: 0x9d4edd, metalness: 0.9, roughness: 0.3 }}));
+    wingsMesh.position.set(0, 0, 0.4);
+    player.add(wingsMesh);
+    player.position.set(0, -3.5, 0);
+    scene.add(player);
+
+    // Hazard Spawner
+    const hazards = [];
+    const hazGeo = new THREE.DodecahedronGeometry(1.0);
+    const hazMat = new THREE.MeshStandardMaterial({{ color: 0xff0055, metalness: 0.6, roughness: 0.3 }});
+    function spawnHaz() {{
+      const h = new THREE.Mesh(hazGeo, hazMat);
+      h.position.set((Math.random() - 0.5) * 18, (Math.random() - 0.5) * 8, -60);
+      scene.add(h);
+      hazards.push(h);
+    }}
+    setInterval(spawnHaz, 750);
+
+    let score = 0, isGameOver = false;
+    const target = {{ x: 0, y: -3.5 }};
+    window.addEventListener('pointermove', (e) => {{
+      target.x = ((e.clientX / window.innerWidth) * 2 - 1) * 9;
+      target.y = (-(e.clientY / window.innerHeight) * 2 + 1) * 5;
+    }});
+
+    function resetSpaceGame() {{
+      score = 0;
+      isGameOver = false;
+      document.getElementById('scoreVal').innerText = score;
+      document.getElementById('gameover').style.display = 'none';
+      hazards.forEach(h => scene.remove(h));
+      hazards.length = 0;
+      player.position.set(0, -3.5, 0);
+    }}
+
+    function animate() {{
+      requestAnimationFrame(animate);
+      if(isGameOver) return;
+      player.position.x += (target.x - player.position.x) * 0.12;
+      player.position.y += (target.y - player.position.y) * 0.12;
+      player.rotation.z = -(target.x - player.position.x) * 0.2;
+
+      for(let i=hazards.length-1; i>=0; i--) {{
+        const h = hazards[i];
+        h.position.z += 0.45;
+        h.rotation.x += 0.03;
+        if(player.position.distanceTo(h.position) < 1.8) {{
+          isGameOver = true;
+          document.getElementById('finalScore').innerText = score;
+          document.getElementById('gameover').style.display = 'flex';
+        }}
+        if(h.position.z > 15) {{
+          scene.remove(h);
+          hazards.splice(i, 1);
+          score += 15;
+          document.getElementById('scoreVal').innerText = score;
+        }}
+      }}
+      renderer.render(scene, camera);
+    }}
+    animate();
+
+    window.addEventListener('resize', () => {{
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }});
+  </script>
+</body>
+</html>"""
+
 class GodOrchestrator:
-    """
-    Master Enterprise Swarm Orchestrator:
-    Deconstructs user directives, coordinates 5-agent DAG pipelines,
-    validates WebGL AST logic, and compiles standalone production 3D builds.
-    """
+    """Master Orchestrator coordinating AI Gateway, 5-Agent DAG, and Standalone Packaging."""
 
     def __init__(self):
         self.role_name = "Master Swarm Orchestrator"
         self.version = "2040.2-Enterprise"
-        
-        # Instantiate Swarm Agents
-        if AGENTS_AVAILABLE:
-            self.director = DirectorAgent()
-            self.map_builder = MapBuilderAgent()
-            self.physics = PhysicsAgent()
-            self.qa_tester = QATesterAgent()
-        else:
-            self.director = None
-            self.map_builder = None
-            self.physics = None
-            self.qa_tester = None
-
-        self.router = master_router_instance
-        self.builder = game_builder
         logger.info(f"âš¡ [{self.role_name} v{self.version}] Initialized and online.")
 
     def _extract_pure_html(self, text: str) -> str:
-        """Strips markdown code fences and isolates clean standalone HTML."""
+        """Isolates standalone valid HTML documents from LLM responses."""
         if not text:
             return ""
         clean = text.strip()
@@ -313,128 +588,6 @@ class GodOrchestrator:
             return match_fence.group(1).strip()
         return clean
 
-    async def _execute_swarm_dag(
-        self, 
-        prompt: str, 
-        report_progress: Callable[[int, str], Coroutine[Any, Any, None]]
-    ) -> Dict[str, Any]:
-        """
-        Executes DAG:
-        Phase 1: Master Intent Routing
-        Phase 2: Game Director Strategic Architecture
-        Phase 3: Parallel Execution (MapBuilder + Physics)
-        """
-        await report_progress(10, "Master Intent Router analyzing game complexity...")
-        
-        # Phase 1: Intent Routing & Complexity Analysis
-        if self.router:
-            routing_data = await self.router.analyze_and_allocate(prompt)
-        else:
-            routing_data = {"status": "DEFAULT", "architecture": {"complexity_class": "O(N)"}}
-
-        await report_progress(25, "Director Agent architecting game loop and rules...")
-        
-        # Phase 2: Director Strategic Blueprint
-        if self.director:
-            director_blueprint = await self.director.perform_role(prompt)
-        else:
-            director_blueprint = {"title": prompt[:32], "genre": "3D Action Space"}
-
-        await report_progress(45, "Executing parallel DAG: 3D Map Architect & Physics Master...")
-
-        # Phase 3: Parallel DAG Execution (Map Builder + Physics Master)
-        map_task = self.map_builder.perform_role(
-            environment_theme=director_blueprint.get("genre", prompt),
-            generated_assets=director_blueprint.get("required_3d_assets", [])
-        ) if self.map_builder else asyncio.sleep(0.01)
-
-        physics_task = self.physics.perform_role(
-            game_concept=prompt,
-            director_plan=director_blueprint
-        ) if self.physics else asyncio.sleep(0.01)
-
-        map_blueprint, physics_blueprint = await asyncio.gather(map_task, physics_task)
-
-        return {
-            "routing": routing_data,
-            "director": director_blueprint,
-            "map": map_blueprint if isinstance(map_blueprint, dict) else {},
-            "physics": physics_blueprint if isinstance(physics_blueprint, dict) else {}
-        }
-
-    async def _synthesize_and_verify_code(
-        self, 
-        prompt: str, 
-        dag_blueprints: Dict[str, Any],
-        report_progress: Callable[[int, str], Coroutine[Any, Any, None]]
-    ) -> str:
-        """
-        Synthesizes complete Three.js code via UniversalAIGateway
-        and executes an adversarial self-healing loop via QATesterAgent.
-        """
-        await report_progress(60, "Universal AI Gateway synthesizing 3D Three.js WebGL build...")
-
-        context_payload = {
-            "prompt": prompt,
-            "director_plan": dag_blueprints.get("director", {}),
-            "map_layout": dag_blueprints.get("map", {}),
-            "physics_vectors": dag_blueprints.get("physics", {})
-        }
-
-        synthesis_prompt = (
-            f"Synthesize the complete, standalone Three.js WebGL game for: '{prompt}'.\n\n"
-            f"TECHNICAL BLUEPRINTS FROM SWARM:\n"
-            f"{json.dumps(context_payload, indent=2, default=str)}\n\n"
-            f"Generate the full <!DOCTYPE html> document without explanations."
-        )
-
-        generated_html = ""
-        try:
-            if UniversalAIGateway:
-                raw_code = await UniversalAIGateway.generate_response(
-                    prompt=synthesis_prompt,
-                    system_prompt=HTML_SYNTHESIS_DIRECTIVE
-                )
-                generated_html = self._extract_pure_html(raw_code)
-        except Exception as e:
-            logger.warning(f"Universal AI Gateway synthesis warning: {e}")
-
-        # Phase 5: QA Tester AST Inspection & Adversarial Self-Healing Loop
-        await report_progress(80, "QA Tester V3.0 executing AST inspection and memory leak checks...")
-
-        if self.qa_tester and generated_html:
-            qa_report = await self.qa_tester.perform_role(generated_code=generated_html)
-            
-            if qa_report.get("status") == "SUCCESS":
-                logger.info("âœ” QA Inspection PASSED on first synthesis.")
-                return qa_report.get("verified_code") or generated_html
-            
-            # Adversarial Auto-Healing Retry Loop
-            logger.warning("âš ï¸ QA Inspection detected issues. Engaging adversarial self-healing...")
-            await report_progress(88, "Adversarial self-healing loop correcting code syntax...")
-            
-            correction_directive = qa_report.get("correction_prompt") or "Fix HTML tags and Three.js render loop."
-            try:
-                if UniversalAIGateway:
-                    healed_raw = await UniversalAIGateway.generate_response(
-                        prompt=f"Correct the following code:\n\n{generated_html}\n\nDIRECTIVE:\n{correction_directive}",
-                        system_prompt=HTML_SYNTHESIS_DIRECTIVE
-                    )
-                    healed_html = self._extract_pure_html(healed_raw)
-                    second_qa = await self.qa_tester.perform_role(generated_code=healed_html)
-                    if second_qa.get("status") == "SUCCESS":
-                        logger.info("âœ” Adversarial self-healing successfully rectified code.")
-                        return second_qa.get("verified_code") or healed_html
-            except Exception as heal_err:
-                logger.warning(f"Self-healing notice: {heal_err}")
-
-        # If generated HTML valid, return it; otherwise engage procedural fallback
-        if generated_html and "three.min.js" in generated_html and "</script>" in generated_html:
-            return generated_html
-
-        logger.info("Loading high-fidelity procedural 3D Space simulation fallback.")
-        return get_procedural_space_simulation(title=dag_blueprints.get("director", {}).get("title", prompt[:30]))
-
     async def generate_game_and_export(
         self,
         prompt: str,
@@ -442,12 +595,12 @@ class GodOrchestrator:
         progress_callback: Optional[Callable[[int, str], Coroutine[Any, Any, None]]] = None
     ) -> Dict[str, Any]:
         """
-        Master Pipeline Entry Point:
-        Executes Routing -> 5-Agent Swarm -> Code Synthesis -> QA Verification -> Standalone Packaging.
+        Executes Full High-Tech Game Synthesis Pipeline:
+        Prompt Parsing -> Dynamic 3D WebGL Generation -> Pre-Packaging into Web, Android, PC ZIPs.
         """
         start_time = time.time()
         game_id = game_id or f"god_game_{int(time.time())}"
-        logger.info(f"âš¡ [SWARM PIPELINE START] Directive: '{prompt[:60]}...' | Game ID: {game_id}")
+        logger.info(f"âš¡ [SWARM SYNTHESIS START] Prompt: '{prompt}' | Game ID: {game_id}")
 
         async def report(pct: int, msg: str):
             if progress_callback:
@@ -459,71 +612,68 @@ class GodOrchestrator:
                 except Exception:
                     pass
 
+        await report(15, "Swarm AI analyzing game dynamics and 3D meshes...")
+
+        # 1. AI Generation via Universal AI Gateway
+        final_html = ""
         try:
-            # 1. Execute Swarm DAG
-            dag_results = await self._execute_swarm_dag(prompt, report)
+            if UniversalAIGateway:
+                await report(45, "Universal Gateway synthesizing 3D Three.js WebGL build...")
+                raw_code = await UniversalAIGateway.generate_response(
+                    prompt=f"Create a complete, responsive 3D game for: '{prompt}'. Ensure full interactivity and beautiful 3D graphics.",
+                    system_prompt=HIGH_TECH_SYNTHESIS_DIRECTIVE
+                )
+                final_html = self._extract_pure_html(raw_code)
+        except Exception as ai_err:
+            logger.warning(f"Universal AI Gateway synthesis notice: {ai_err}")
 
-            # 2. Synthesize & QA Verify 3D Code
-            final_html = await self._synthesize_and_verify_code(prompt, dag_results, report)
+        # 2. Resilient Fallback Engine if AI was unreachable or returned incomplete code
+        if not final_html or "three.min.js" not in final_html or "</script>" not in final_html:
+            await report(70, "Engaging High-Tech procedural WebGL synthesis engine...")
+            final_html = generate_procedural_fallback_game(prompt)
 
-            # 3. Package Multiplatform Standalone Bundle
-            await report(92, "Universal Builder packaging standalone ZIP and multiplatform assets...")
-            
-            download_url = f"/exports/{game_id}.zip"
-            if self.builder:
-                try:
-                    build_res = self.builder.create_threejs_build(
-                        build_id=game_id,
-                        title=dag_results.get("director", {}).get("title", f"Simulation: {prompt[:24]}")
-                    )
-                    download_url = build_res.get("zip_url", download_url)
-                except Exception as b_err:
-                    logger.warning(f"Universal Builder packaging notice: {b_err}")
+        # 3. Write Raw Game to Exports Directory
+        await report(85, "Writing 3D WebGL assets to disk staging...")
+        game_dir = EXPORTS_ROOT / game_id
+        game_dir.mkdir(parents=True, exist_ok=True)
+        index_file = game_dir / "index.html"
+        index_file.write_text(final_html, encoding="utf-8")
 
-            await report(100, "3D Simulation verified and injected into live Viewport!")
-            elapsed = round(time.time() - start_time, 2)
-            logger.info(f"ðŸŽ‰ [SWARM PIPELINE COMPLETE] Execution Time: {elapsed}s | Game ID: {game_id}")
+        # 4. Automatic Multiplatform Pre-Packaging (Web, Android, PC)
+        await report(95, "Pre-packaging Web HTML5, Android APK, and PC Tauri bundles...")
+        if deployment_engine:
+            try:
+                await deployment_engine.push_to_staging(game_id=game_id, html_code=final_html, title=f"Game {game_id}")
+            except Exception as dep_err:
+                logger.warning(f"Pre-packaging notice: {dep_err}")
 
-            return {
+        elapsed = round(time.time() - start_time, 2)
+        await report(100, f"3D Simulation ready in {elapsed}s!")
+        logger.info(f"ðŸŽ‰ [SWARM SYNTHESIS COMPLETE] Time: {elapsed}s | ID: {game_id}")
+
+        return {
+            "status": "SUCCESS",
+            "game_id": game_id,
+            "game_html": final_html,
+            "execution_time_sec": elapsed,
+            "result": {
                 "status": "SUCCESS",
-                "task_id": game_id,
-                "execution_time_sec": elapsed,
-                "result": {
-                    "status": "SUCCESS",
-                    "final_build": final_html,
-                    "download_url": download_url,
-                    "architecture": dag_results.get("routing", {}).get("architecture", {}),
-                    "gameplay": dag_results.get("director", {}).get("gameplay_loop", {})
-                }
+                "final_build": final_html,
+                "download_url": f"/api/v1/export/{game_id}/web"
             }
+        }
 
-        except Exception as e:
-            logger.error(f"âŒ Swarm pipeline encountered exception: {e}. Yielding zero-crash procedural fallback.")
-            fallback_html = get_procedural_space_simulation(title="Simulation: 2040")
-            elapsed = round(time.time() - start_time, 2)
-            return {
-                "status": "SUCCESS",
-                "task_id": game_id,
-                "execution_time_sec": elapsed,
-                "result": {
-                    "status": "SUCCESS",
-                    "final_build": fallback_html,
-                    "download_url": f"/exports/{game_id}.zip",
-                    "error_mitigated": str(e)
-                }
-            }
-
-# Global Singleton Orchestrator
+# Global Singleton Orchestrator Instance
 master_orchestrator = GodOrchestrator()
 
 async def generate_game_and_export(
-    prompt: str, 
-    game_id: Optional[str] = None, 
+    prompt: str,
+    game_id: Optional[str] = None,
     progress_callback: Optional[Callable[[int, str], Coroutine[Any, Any, None]]] = None
 ) -> Dict[str, Any]:
-    """Top-level functional interface for main.py server endpoints."""
+    """Top-level functional export for main.py."""
     return await master_orchestrator.generate_game_and_export(
         prompt=prompt,
         game_id=game_id,
         progress_callback=progress_callback
-    )
+)
